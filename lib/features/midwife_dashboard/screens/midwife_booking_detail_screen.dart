@@ -27,6 +27,33 @@ class _MidwifeBookingDetailScreenState
   );
   bool _isProcessing = false;
 
+  Future<void> _handleStartSession() async {
+    setState(() => _isProcessing = true);
+    try {
+      await ref
+          .read(bookingRepositoryProvider)
+          .startMidwifeConsultation(widget.bookingId);
+      ref.invalidate(midwifeBookingsProvider);
+      if (!mounted) return;
+      context.push('/consultation-chat/${widget.bookingId}');
+    } on DioException catch (error) {
+      if (!mounted) return;
+      final response = error.response?.data;
+      final code = response is Map ? response['code'] : null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            code == 'consultation_not_due'
+                ? 'Sesi baru dapat dimulai pada waktu jadwal konsultasi.'
+                : 'Sesi gagal dimulai. Muat ulang booking lalu coba lagi.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
   @override
   void dispose() {
     _reasonController.dispose();
@@ -369,9 +396,17 @@ class _MidwifeBookingDetailScreenState
                 onPressed: _isProcessing ? null : _showRejectDialog,
               ),
             ] else if (booking.isConfirmed) ...[
-              const Text(
-                'Booking sudah dikonfirmasi. Integrasi sesi chat bidan-pasien menjadi tahap berikutnya.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              AppButton(
+                label: DateTime.now().isBefore(booking.slotStartAt)
+                    ? 'Sesi tersedia saat jadwal dimulai'
+                    : 'Mulai Sesi Konsultasi',
+                icon: Icons.play_arrow_rounded,
+                backgroundColor: AppColors.success,
+                isLoading: _isProcessing,
+                onPressed: DateTime.now().isBefore(booking.slotStartAt) ||
+                        _isProcessing
+                    ? null
+                    : _handleStartSession,
               ),
             ],
 

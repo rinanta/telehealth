@@ -15,6 +15,8 @@ class ApiEndpoints {
   // Bookings & Payments
   static const String bookings = '/bookings';
   static String booking(String bookingId) => '/bookings/$bookingId';
+  static String bookingMessages(String bookingId) =>
+      '/bookings/$bookingId/messages';
   static String bookingCheckout(String bookingId) =>
       '/bookings/$bookingId/checkout';
   static String bookingAccept(String bookingId) =>
@@ -26,6 +28,8 @@ class ApiEndpoints {
       bookingAccept(bookingId);
   static String midwifeBookingReject(String bookingId) =>
       bookingReject(bookingId);
+  static String midwifeBookingStart(String bookingId) =>
+      '/bookings/$bookingId/start';
 
   // Consultations & Live Sessions
   static String consultationStart(String id) => '/consultations/$id/start';

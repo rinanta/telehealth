@@ -111,6 +111,22 @@ class MidwifeBookingEndpointTest extends TestCase
             ->assertJsonPath('data.refund_required', true);
     }
 
+    public function test_verified_midwife_can_start_a_confirmed_booking(): void
+    {
+        $firebase = $this->authenticateVerifiedMidwife();
+        $firebase->shouldReceive('startConsultationForMidwife')
+            ->once()
+            ->with('booking-123', 'midwife-123')
+            ->andReturn('started');
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $this->withToken('valid-token')
+            ->postJson('/api/bookings/booking-123/start')
+            ->assertOk()
+            ->assertJsonPath('data.id', 'booking-123')
+            ->assertJsonPath('data.status', 'active');
+    }
+
     private function authenticateVerifiedMidwife(): FirebaseService
     {
         $firebase = Mockery::mock(FirebaseService::class);

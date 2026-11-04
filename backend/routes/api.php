@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\ConsultationChatController;
 use App\Http\Controllers\Api\MayarWebhookController;
 use App\Http\Controllers\Api\MidwifeBookingController;
 use App\Http\Controllers\Api\MidwifeController;
@@ -45,5 +46,12 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
             ->name('midwife.bookings.accept');
         Route::post('/bookings/{id}/reject', [MidwifeBookingController::class, 'reject'])
             ->name('midwife.bookings.reject');
+        Route::post('/bookings/{id}/start', [MidwifeBookingController::class, 'start'])
+            ->name('midwife.bookings.start');
     });
+
+    Route::get('/bookings/{id}/messages', [ConsultationChatController::class, 'index'])
+        ->name('bookings.messages.index');
+    Route::post('/bookings/{id}/messages', [ConsultationChatController::class, 'store'])
+        ->name('bookings.messages.store');
 });

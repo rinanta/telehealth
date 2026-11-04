@@ -353,6 +353,168 @@ class FirebaseBookingTransactionTest extends TestCase
         });
     }
 
+    public function test_midwife_can_start_its_confirmed_booking_at_the_scheduled_time(): void
+    {
+        $this->travelTo('2026-11-05 10:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'slot_start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                    'status' => ['stringValue' => 'confirmed'],
+                ],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->startConsultationForMidwife(
+            'booking-123',
+            'midwife-123',
+        );
+
+        $this->assertSame('started', $result);
+        Http::assertSent(static function (Request $request): bool {
+            $writes = $request->data()['writes'] ?? [];
+
+            return str_ends_with($request->url(), ':commit')
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'active'
+                && array_key_exists(
+                    'consultation_started_at',
+                    $writes[0]['update']['fields'] ?? [],
+                );
+        });
+    }
+
+    public function test_midwife_cannot_start_a_confirmed_booking_before_its_slot_time(): void
+    {
+        $this->travelTo('2026-11-05 09:59:59 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'slot_start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                    'status' => ['stringValue' => 'confirmed'],
+                ],
+            )),
+        ]);
+
+        $result = $this->firebase()->startConsultationForMidwife(
+            'booking-123',
+            'midwife-123',
+        );
+
+        $this->assertSame('not_ready', $result);
+        Http::assertNotSent(
+            static fn (Request $request): bool => str_ends_with($request->url(), ':commit'),
+        );
+    }
+
+    public function test_consultation_message_is_written_only_during_active_session(): void
+    {
+        $this->travelTo('2026-11-05 10:10:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'patient_id' => ['stringValue' => 'patient-123'],
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'status' => ['stringValue' => 'active'],
+                    'consultation_started_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                ],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->sendConsultationMessage(
+            'booking-123',
+            'patient-123',
+            'Bunda',
+            'Halo, Bidan.',
+        );
+
+        $this->assertSame('sent', $result['result']);
+        $this->assertSame('Halo, Bidan.', $result['message']['text']);
+        Http::assertSent(static function (Request $request): bool {
+            $writes = $request->data()['writes'] ?? [];
+            $fields = $writes[0]['update']['fields'] ?? [];
+
+            return str_ends_with($request->url(), ':commit')
+                && count($writes) === 1
+                && str_contains($writes[0]['update']['name'] ?? '', '/documents/messages/')
+                && ($fields['booking_id']['stringValue'] ?? null) === 'booking-123'
+                && ($fields['sender_id']['stringValue'] ?? null) === 'patient-123'
+                && ($fields['is_midwife']['booleanValue'] ?? null) === false
+                && ($fields['text']['stringValue'] ?? null) === 'Halo, Bidan.'
+                && ($writes[0]['currentDocument']['exists'] ?? null) === false;
+        });
+    }
+
+    public function test_consultation_message_is_rejected_after_thirty_minutes(): void
+    {
+        $this->travelTo('2026-11-05 10:30:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'patient_id' => ['stringValue' => 'patient-123'],
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'status' => ['stringValue' => 'active'],
+                    'consultation_started_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                ],
+            )),
+        ]);
+
+        $result = $this->firebase()->sendConsultationMessage(
+            'booking-123',
+            'patient-123',
+            'Bunda',
+            'Pesan terlambat.',
+        );
+
+        $this->assertSame('expired', $result['result']);
+        Http::assertNotSent(
+            static fn (Request $request): bool => str_ends_with($request->url(), ':commit'),
+        );
+    }
+
+    public function test_consultation_messages_are_loaded_for_the_booking(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:runQuery' => Http::response([[
+                'document' => $this->document('messages/message-123', [
+                    'booking_id' => ['stringValue' => 'booking-123'],
+                    'sender_id' => ['stringValue' => 'patient-123'],
+                    'text' => ['stringValue' => 'Halo.'],
+                    'sent_at' => ['timestampValue' => '2026-11-05T10:01:00Z'],
+                ]),
+            ]]),
+        ]);
+
+        $messages = $this->firebase()->getConsultationMessages('booking-123');
+
+        $this->assertCount(1, $messages);
+        $this->assertSame('message-123', $messages[0]['id']);
+        Http::assertSent(static function (Request $request): bool {
+            $filters = $request->data()['structuredQuery']['where']['compositeFilter']['filters'] ?? [];
+
+            return str_ends_with($request->url(), ':runQuery')
+                && ($request->data()['structuredQuery']['from'][0]['collectionId'] ?? null) === 'messages'
+                && ($filters[0]['fieldFilter']['field']['fieldPath'] ?? null) === 'booking_id'
+                && ($filters[0]['fieldFilter']['value']['stringValue'] ?? null) === 'booking-123';
+        });
+    }
+
     public function test_attach_mayar_invoice_saves_payment_and_checkout_link_atomically(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');

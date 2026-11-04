@@ -261,7 +261,9 @@ class MidwifeDashboardScreen extends ConsumerWidget {
                 ),
               )
             else
-              ...confirmedBookings.map(_buildConfirmedCard),
+              ...confirmedBookings.map(
+                (booking) => _buildConfirmedCard(context, booking, ref),
+              ),
 
             const SizedBox(height: 20),
           ],
@@ -469,7 +471,11 @@ class MidwifeDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildConfirmedCard(Booking booking) {
+  Widget _buildConfirmedCard(
+    BuildContext context,
+    Booking booking,
+    WidgetRef ref,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
@@ -513,9 +519,38 @@ class MidwifeDashboardScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Sesi chat bidan-pasien belum terhubung ke server.',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          AppButton(
+            label: DateTime.now().isBefore(booking.slotStartAt)
+                ? 'Sesi tersedia saat jadwal dimulai'
+                : 'Mulai Sesi Konsultasi',
+            icon: Icons.play_arrow_rounded,
+            backgroundColor: AppColors.success,
+            onPressed: DateTime.now().isBefore(booking.slotStartAt)
+                ? null
+                : () async {
+                    try {
+                      await ref
+                          .read(bookingRepositoryProvider)
+                          .startMidwifeConsultation(booking.id);
+                      ref.invalidate(midwifeBookingsProvider);
+                      if (context.mounted) {
+                        context.push('/consultation-chat/${booking.id}');
+                      }
+                    } on DioException catch (error) {
+                      if (!context.mounted) return;
+                      final response = error.response?.data;
+                      final code = response is Map ? response['code'] : null;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            code == 'consultation_not_due'
+                                ? 'Sesi baru dapat dimulai pada waktu jadwal konsultasi.'
+                                : 'Sesi gagal dimulai. Muat ulang booking lalu coba lagi.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
           ),
         ],
       ),

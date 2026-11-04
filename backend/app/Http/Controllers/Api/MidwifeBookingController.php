@@ -144,4 +144,43 @@ class MidwifeBookingController extends Controller
             'refund_required' => true,
         ]]);
     }
+
+    public function start(
+        string $id,
+        Request $request,
+        FirebaseService $firebase,
+    ): JsonResponse {
+        $result = $firebase->startConsultationForMidwife(
+            $id,
+            $request->attributes->get('firebase_uid'),
+        );
+
+        if (in_array($result, ['not_found', 'not_owned'], true)) {
+            return response()->json([
+                'message' => 'Booking not found.',
+                'code' => 'booking_not_found',
+            ], 404);
+        }
+
+        if ($result === 'not_ready') {
+            return response()->json([
+                'message' => 'The consultation can only start at or after its scheduled time.',
+                'code' => 'consultation_not_due',
+            ], 409);
+        }
+
+        if ($result !== 'started') {
+            return response()->json([
+                'message' => 'This booking is not ready to start.',
+                'code' => 'booking_not_actionable',
+            ], 409);
+        }
+
+        return response()->json(['data' => [
+            'id' => $id,
+            'status' => 'active',
+            'consultation_started_at' => now('UTC')->toIso8601String(),
+        ]]);
+    }
+
 }

@@ -160,6 +160,126 @@ class FirebaseService
         );
     }
 
+    public function startConsultationForMidwife(string $bookingId, string $midwifeId): string
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+
+        if ($booking === null) {
+            return 'not_found';
+        }
+
+        if (($booking['midwife_id'] ?? null) !== $midwifeId) {
+            return 'not_owned';
+        }
+
+        if (($booking['status'] ?? null) !== 'confirmed') {
+            return 'not_pending';
+        }
+
+        $slotStart = $booking['slot_start_at'] ?? null;
+        if (! is_string($slotStart) || strtotime($slotStart) > now('UTC')->getTimestamp()) {
+            return 'not_ready';
+        }
+
+        return $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'status' => ['stringValue' => 'active'],
+                    'consultation_started_at' => ['timestampValue' => now('UTC')->toIso8601String()],
+                ],
+                ['status', 'consultation_started_at'],
+            ),
+        ]) ? 'started' : 'conflict';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getConsultationMessages(string $bookingId): array
+    {
+        $messages = $this->runFirestoreQuery('messages', [
+            ['field' => 'booking_id', 'value' => ['stringValue' => $bookingId]],
+        ]);
+        usort(
+            $messages,
+            static fn (array $left, array $right): int => strcmp(
+                (string) ($left['sent_at'] ?? ''),
+                (string) ($right['sent_at'] ?? ''),
+            ),
+        );
+
+        return array_slice($messages, -100);
+    }
+
+    /**
+     * @return array{result: string, message?: array<string, mixed>}
+     */
+    public function sendConsultationMessage(
+        string $bookingId,
+        string $senderId,
+        string $senderName,
+        string $text,
+    ): array {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+
+        if ($booking === null) {
+            return ['result' => 'not_found'];
+        }
+
+        $isMidwife = ($booking['midwife_id'] ?? null) === $senderId;
+        if (! $isMidwife && ($booking['patient_id'] ?? null) !== $senderId) {
+            return ['result' => 'not_participant'];
+        }
+
+        if (($booking['status'] ?? null) !== 'active') {
+            return ['result' => 'not_active'];
+        }
+
+        $startedAt = $booking['consultation_started_at'] ?? null;
+        $startedTimestamp = is_string($startedAt) ? strtotime($startedAt) : false;
+        $now = now('UTC');
+        if ($startedTimestamp === false || $now->getTimestamp() >= $startedTimestamp + 1800) {
+            return ['result' => 'expired'];
+        }
+
+        $messageId = (string) Str::uuid();
+        $sentAt = $now->toIso8601String();
+        $message = [
+            'booking_id' => $bookingId,
+            'sender_id' => $senderId,
+            'sender_name' => $senderName,
+            'text' => $text,
+            'sent_at' => $sentAt,
+            'is_midwife' => $isMidwife,
+        ];
+        $fields = [];
+        foreach ($message as $key => $value) {
+            $fields[$key] = is_bool($value)
+                ? ['booleanValue' => $value]
+                : (in_array($key, ['sent_at'], true)
+                    ? ['timestampValue' => $value]
+                    : ['stringValue' => $value]);
+        }
+
+        $saved = $this->commitFirestoreTransaction($transaction, [[
+            'update' => [
+                'name' => $this->documentName('messages', $messageId),
+                'fields' => $fields,
+            ],
+            'currentDocument' => ['exists' => false],
+        ]]);
+
+        if (! $saved) {
+            return ['result' => 'conflict'];
+        }
+
+        return ['result' => 'sent', 'message' => ['id' => $messageId, ...$message]];
+    }
+
     /**
      * @param  list<string>  $allowedStatuses
      * @param  array<string, array<string, mixed>>  $fields

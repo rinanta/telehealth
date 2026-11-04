@@ -195,6 +195,15 @@ class BookingRepository {
     );
   }
 
+  Future<void> startMidwifeConsultation(String bookingId) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    await apiClient.post(ApiEndpoints.midwifeBookingStart(bookingId));
+  }
+
   Future<MayarCheckout> createMayarCheckout({
     required String bookingId,
     required String mobile,

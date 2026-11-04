@@ -449,7 +449,9 @@ class _ServerBookingHoldStatusState
     });
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_booking.status == 'awaiting_payment' ||
-          _booking.status == 'paid_pending_midwife') {
+          _booking.status == 'paid_pending_midwife' ||
+          _booking.status == 'confirmed' ||
+          _booking.status == 'active') {
         _refreshBooking();
       }
     });
@@ -602,6 +604,15 @@ class _ServerBookingHoldStatusState
                 onPressed: () => context.push('/mayar-checkout/${booking.id}'),
               ),
             ],
+          ],
+          if (booking.status == 'active') ...[
+            const SizedBox(height: 16),
+            AppButton(
+              label: 'Masuk ke Ruang Chat Konsultasi',
+              icon: Icons.chat_rounded,
+              backgroundColor: AppColors.success,
+              onPressed: () => context.push('/consultation-chat/${booking.id}'),
+            ),
           ],
           if (_refreshError != null) ...[
             const SizedBox(height: 12),
