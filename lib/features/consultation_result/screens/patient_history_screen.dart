@@ -42,15 +42,21 @@ class PatientHistoryScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Muat ulang',
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(patientHistoryProvider),
+            onPressed: () => ref.refresh(patientHistoryProvider.future),
           ),
         ],
       ),
-      body: patientBookings.isEmpty
-          ? const Center(child: Text('Belum ada riwayat konsultasi.'))
-          : RefreshIndicator(
-              onRefresh: () => ref.refresh(patientHistoryProvider.future),
-              child: ListView.separated(
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(patientHistoryProvider.future),
+        child: patientBookings.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(child: Text('Belum ada riwayat konsultasi.')),
+                ],
+              )
+            : ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: patientBookings.length,

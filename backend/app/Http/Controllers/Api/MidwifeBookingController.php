@@ -60,6 +60,7 @@ class MidwifeBookingController extends Controller
                     ? $document['rejection_reason']
                     : null,
                 'consultation_started_at' => $document['consultation_started_at'] ?? null,
+                'ends_at' => $document['ends_at'] ?? null,
                 'consultation_completed_at' => $document['consultation_completed_at'] ?? null,
                 'created_at' => $document['created_at'],
             ];
@@ -176,10 +177,15 @@ class MidwifeBookingController extends Controller
             ], 409);
         }
 
+        $now = now('UTC');
+        $startedAt = $now->toIso8601String();
+        $endsAt = $now->copy()->addMinutes(30)->toIso8601String();
+
         return response()->json(['data' => [
             'id' => $id,
             'status' => 'active',
-            'consultation_started_at' => now('UTC')->toIso8601String(),
+            'consultation_started_at' => $startedAt,
+            'ends_at' => $endsAt,
         ]]);
     }
 
@@ -235,5 +241,4 @@ class MidwifeBookingController extends Controller
             'result' => $outcome['consultation_result'],
         ]]);
     }
-
 }

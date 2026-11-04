@@ -510,13 +510,27 @@ class _ServerBookingHoldStatusState
         title: const Text('Status Reservasi'),
         actions: [
           IconButton(
+            tooltip: 'Perbarui Status',
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _refreshBooking,
+          ),
+          IconButton(
             tooltip: 'Ke Beranda',
             icon: const Icon(Icons.home_outlined),
             onPressed: () => context.go('/patient-dashboard'),
           ),
         ],
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        onRefresh: _refreshBooking,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         children: [
           Container(
@@ -634,7 +648,8 @@ class _ServerBookingHoldStatusState
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   String _bookingStatusMessage(String status) {

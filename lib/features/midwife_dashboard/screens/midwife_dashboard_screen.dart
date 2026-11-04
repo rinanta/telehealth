@@ -104,6 +104,11 @@ class MidwifeDashboardScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
+            tooltip: 'Muat ulang',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.refresh(midwifeBookingsProvider.future),
+          ),
+          IconButton(
             tooltip: 'Atur Tarif & Jadwal',
             icon: const Icon(Icons.tune),
             onPressed: () => context.push('/midwife-management'),
@@ -118,8 +123,11 @@ class MidwifeDashboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(midwifeBookingsProvider.future),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -274,7 +282,8 @@ class MidwifeDashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildStatBox({
@@ -351,7 +360,9 @@ class MidwifeDashboardScreen extends ConsumerWidget {
                   fontSize: 15,
                 ),
               ),
-              const StatusBadge(status: 'active'),
+              StatusBadge(
+                status: booking.isAwaitingResult ? 'awaiting_result' : 'active',
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -363,12 +374,28 @@ class MidwifeDashboardScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 14),
-          AppButton(
-            label: 'Masuk Ruang Chat Sesi Konsultasi',
-            icon: Icons.chat_rounded,
-            backgroundColor: AppColors.success,
-            onPressed: () => context.push('/consultation-chat/${booking.id}'),
-          ),
+          if (booking.isChatActive)
+            AppButton(
+              label: 'Masuk Ruang Chat Sesi Konsultasi',
+              icon: Icons.chat_rounded,
+              backgroundColor: AppColors.success,
+              onPressed: () => context.push('/consultation-chat/${booking.id}'),
+            )
+          else ...[
+            AppButton(
+              label: 'Waktu Habis: Lengkapi Lembar Hasil',
+              icon: Icons.assignment_turned_in_rounded,
+              backgroundColor: AppColors.secondary,
+              onPressed: () => context.push('/midwife-result-form/${booking.id}'),
+            ),
+            const SizedBox(height: 8),
+            AppButton(
+              label: 'Buka Riwayat Chat (Hanya Baca)',
+              icon: Icons.chat_outlined,
+              isOutlined: true,
+              onPressed: () => context.push('/consultation-chat/${booking.id}'),
+            ),
+          ],
         ],
       ),
     );

@@ -192,15 +192,19 @@ class FirebaseService
             return 'not_ready';
         }
 
+        $startedAt = now('UTC');
+        $endsAt = $startedAt->copy()->addMinutes(30);
+
         return $this->commitFirestoreTransaction($transaction, [
             $this->updateWrite(
                 'bookings',
                 $bookingId,
                 [
                     'status' => ['stringValue' => 'active'],
-                    'consultation_started_at' => ['timestampValue' => now('UTC')->toIso8601String()],
+                    'consultation_started_at' => ['timestampValue' => $startedAt->toIso8601String()],
+                    'ends_at' => ['timestampValue' => $endsAt->toIso8601String()],
                 ],
-                ['status', 'consultation_started_at'],
+                ['status', 'consultation_started_at', 'ends_at'],
             ),
         ]) ? 'started' : 'conflict';
     }
@@ -362,10 +366,16 @@ class FirebaseService
             return ['result' => 'not_active'];
         }
 
-        $startedAt = $booking['consultation_started_at'] ?? null;
-        $startedTimestamp = is_string($startedAt) ? strtotime($startedAt) : false;
+        $endsAt = $booking['ends_at'] ?? null;
+        $endsTimestamp = is_string($endsAt) ? strtotime($endsAt) : false;
+        if ($endsTimestamp === false) {
+            $startedAt = $booking['consultation_started_at'] ?? null;
+            $startedTimestamp = is_string($startedAt) ? strtotime($startedAt) : false;
+            $endsTimestamp = $startedTimestamp !== false ? $startedTimestamp + 1800 : false;
+        }
+
         $now = now('UTC');
-        if ($startedTimestamp === false || $now->getTimestamp() >= $startedTimestamp + 1800) {
+        if ($endsTimestamp === false || $now->getTimestamp() >= $endsTimestamp) {
             return ['result' => 'expired'];
         }
 
@@ -1181,6 +1191,64 @@ class FirebaseService
                 ],
             ];
         }
+
+        return $this->commitFirestoreTransaction($transaction, $writes);
+    }
+
+    /**
+     * Ambil booking berstatus confirmed yang belum dimulai lebih dari $toleranceMinutes
+     * sejak slot_start_at (PRD Bab 5: toleransi 10 menit -> no_show).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getConfirmedBookingsPastNoShowDeadline(int $toleranceMinutes = 10): array
+    {
+        $cutoff = now('UTC')->subMinutes($toleranceMinutes)->toIso8601String();
+
+        return $this->runFirestoreQuery('bookings', [
+            ['field' => 'status', 'value' => ['stringValue' => 'confirmed']],
+            [
+                'field' => 'slot_start_at',
+                'operator' => 'LESS_THAN_OR_EQUAL',
+                'value' => ['timestampValue' => $cutoff],
+            ],
+        ]);
+    }
+
+    /**
+     * Tandai booking confirmed yang terlambat dimulai sebagai no_show secara atomik.
+     */
+    public function markBookingAsNoShow(string $bookingId, int $toleranceMinutes = 10): bool
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+        $now = now('UTC');
+
+        if (
+            $booking === null
+            || ($booking['status'] ?? null) !== 'confirmed'
+        ) {
+            return false;
+        }
+
+        $slotStart = $booking['slot_start_at'] ?? null;
+        $startTimestamp = is_string($slotStart) ? strtotime($slotStart) : false;
+
+        if ($startTimestamp === false || $startTimestamp + ($toleranceMinutes * 60) > $now->getTimestamp()) {
+            return false;
+        }
+
+        $writes = [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'status' => ['stringValue' => 'no_show'],
+                    'no_show_at' => ['timestampValue' => $now->toIso8601String()],
+                ],
+                ['status', 'no_show_at'],
+            ),
+        ];
 
         return $this->commitFirestoreTransaction($transaction, $writes);
     }

@@ -14,6 +14,7 @@ class Booking {
   final String? checkoutUrl;
   final String? rejectionReason;
   final DateTime? consultationStartedAt;
+  final DateTime? endsAt;
   final DateTime? consultationCompletedAt;
   final DateTime createdAt;
 
@@ -32,6 +33,7 @@ class Booking {
     this.checkoutUrl,
     this.rejectionReason,
     this.consultationStartedAt,
+    this.endsAt,
     this.consultationCompletedAt,
     required this.createdAt,
   });
@@ -40,8 +42,19 @@ class Booking {
   bool get isPaidPendingMidwife => status == 'paid_pending_midwife';
   bool get isConfirmed => status == 'confirmed';
   bool get isActive => status == 'active';
+
+  /// Sesi tetap berstatus `active` sampai bidan menyimpan hasil, tetapi chat
+  /// hanya aktif hingga `ends_at` yang ditetapkan server.
+  bool get isChatActive {
+    if (!isActive) return false;
+    final expiresAt = endsAt ?? consultationStartedAt?.add(const Duration(minutes: 30));
+    return expiresAt == null || expiresAt.isAfter(DateTime.now());
+  }
+
+  bool get isAwaitingResult => isActive && !isChatActive;
   bool get isCompleted => status == 'completed';
   bool get isRejected => status == 'rejected';
+  bool get isNoShow => status == 'no_show';
 
   String get statusLabel {
     switch (status) {
@@ -57,6 +70,8 @@ class Booking {
         return 'Selesai';
       case 'rejected':
         return 'Ditolak';
+      case 'no_show':
+        return 'Tidak Hadir';
       case 'expired':
         return 'Kedaluwarsa';
       default:
@@ -79,6 +94,7 @@ class Booking {
     String? checkoutUrl,
     String? rejectionReason,
     DateTime? consultationStartedAt,
+    DateTime? endsAt,
     DateTime? consultationCompletedAt,
     DateTime? createdAt,
   }) {
@@ -97,6 +113,7 @@ class Booking {
       checkoutUrl: checkoutUrl ?? this.checkoutUrl,
       rejectionReason: rejectionReason ?? this.rejectionReason,
       consultationStartedAt: consultationStartedAt ?? this.consultationStartedAt,
+      endsAt: endsAt ?? this.endsAt,
       consultationCompletedAt: consultationCompletedAt ?? this.consultationCompletedAt,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -117,6 +134,7 @@ class Booking {
     'checkout_url': checkoutUrl,
     'rejection_reason': rejectionReason,
     'consultation_started_at': consultationStartedAt?.toIso8601String(),
+    'ends_at': endsAt?.toIso8601String(),
     'consultation_completed_at': consultationCompletedAt?.toIso8601String(),
     'created_at': createdAt.toIso8601String(),
   };
@@ -136,6 +154,7 @@ class Booking {
     checkoutUrl: json['checkout_url'] as String?,
     rejectionReason: json['rejection_reason'] as String?,
     consultationStartedAt: json['consultation_started_at'] != null ? DateTime.tryParse(json['consultation_started_at'] as String) : null,
+    endsAt: json['ends_at'] != null ? DateTime.tryParse(json['ends_at'] as String) : null,
     consultationCompletedAt: json['consultation_completed_at'] != null ? DateTime.tryParse(json['consultation_completed_at'] as String) : null,
     createdAt: DateTime.parse(json['created_at'] as String),
   );

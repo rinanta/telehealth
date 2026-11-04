@@ -13,3 +13,7 @@ Artisan::command('inspire', function () {
 Schedule::command('bookings:expire-holds')
     ->everyMinute()
     ->withoutOverlapping(15);
+
+Schedule::command('bookings:expire-sessions')
+    ->everyMinute()
+    ->withoutOverlapping(15);

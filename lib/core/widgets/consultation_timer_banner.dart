@@ -5,12 +5,14 @@ import '../utils/formatters.dart';
 
 class ConsultationTimerBanner extends StatefulWidget {
   final DateTime startedAt;
+  final DateTime? endsAt;
   final int durationMinutes;
   final VoidCallback? onTimerExpired;
 
   const ConsultationTimerBanner({
     super.key,
     required this.startedAt,
+    this.endsAt,
     this.durationMinutes = 30,
     this.onTimerExpired,
   });
@@ -27,14 +29,26 @@ class _ConsultationTimerBannerState extends State<ConsultationTimerBanner> {
   @override
   void initState() {
     super.initState();
-    _calculateRemaining();
+    final endsAt = widget.endsAt ??
+        widget.startedAt.add(Duration(minutes: widget.durationMinutes));
+    final diff = endsAt.difference(DateTime.now()).inSeconds;
+    _secondsRemaining = diff > 0 ? diff : 0;
+
+    if (diff <= 0) {
+      _expiredNotified = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onTimerExpired?.call();
+      });
+    }
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _calculateRemaining();
     });
   }
 
   void _calculateRemaining() {
-    final endsAt = widget.startedAt.add(Duration(minutes: widget.durationMinutes));
+    final endsAt = widget.endsAt ??
+        widget.startedAt.add(Duration(minutes: widget.durationMinutes));
     final now = DateTime.now();
     final diff = endsAt.difference(now).inSeconds;
 
@@ -46,7 +60,9 @@ class _ConsultationTimerBannerState extends State<ConsultationTimerBanner> {
 
     if (diff <= 0 && !_expiredNotified) {
       _expiredNotified = true;
-      widget.onTimerExpired?.call();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onTimerExpired?.call();
+      });
     }
   }
 

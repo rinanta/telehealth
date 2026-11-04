@@ -723,6 +723,67 @@ class FirebaseBookingTransactionTest extends TestCase
         $this->assertSame('unmatched', $result);
     }
 
+    public function test_get_confirmed_bookings_past_no_show_deadline_queries_firestore(): void
+    {
+        $this->travelTo('2026-11-05 10:15:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:runQuery' => Http::response([
+                [
+                    'document' => $this->document('bookings/booking-late', [
+                        'midwife_id' => ['stringValue' => 'midwife-123'],
+                        'status' => ['stringValue' => 'confirmed'],
+                        'slot_start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                    ]),
+                ],
+            ]),
+        ]);
+
+        $bookings = $this->firebase()->getConfirmedBookingsPastNoShowDeadline(10);
+
+        $this->assertCount(1, $bookings);
+        $this->assertSame('booking-late', $bookings[0]['id']);
+
+        Http::assertSent(static function (Request $request): bool {
+            $filters = $request->data()['structuredQuery']['where']['compositeFilter']['filters'] ?? [];
+
+            return count($filters) === 2
+                && ($filters[0]['fieldFilter']['field']['fieldPath'] ?? null) === 'status'
+                && ($filters[0]['fieldFilter']['value']['stringValue'] ?? null) === 'confirmed'
+                && ($filters[1]['fieldFilter']['field']['fieldPath'] ?? null) === 'slot_start_at'
+                && ($filters[1]['fieldFilter']['op'] ?? null) === 'LESS_THAN_OR_EQUAL';
+        });
+    }
+
+    public function test_mark_booking_as_no_show_updates_status_atomically(): void
+    {
+        $this->travelTo('2026-11-05 10:15:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'slot_start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                    'status' => ['stringValue' => 'confirmed'],
+                ],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->markBookingAsNoShow('booking-123', 10);
+
+        $this->assertTrue($result);
+        Http::assertSent(static function (Request $request): bool {
+            $writes = $request->data()['writes'] ?? [];
+
+            return str_ends_with($request->url(), ':commit')
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'no_show'
+                && in_array('no_show_at', $writes[0]['updateMask']['fieldPaths'] ?? [], true);
+        });
+    }
+
     /**
      * @param  array<string, array<string, mixed>>  $fields
      * @return array<string, mixed>

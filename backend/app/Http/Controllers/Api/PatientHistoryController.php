@@ -69,6 +69,7 @@ class PatientHistoryController extends Controller
                     ? $document['rejection_reason']
                     : null,
                 'consultation_started_at' => $document['consultation_started_at'] ?? null,
+                'ends_at' => $document['ends_at'] ?? null,
                 'consultation_completed_at' => $document['consultation_completed_at'] ?? null,
                 'created_at' => $document['created_at'],
             ];

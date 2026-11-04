@@ -27,11 +27,17 @@ class ConsultationChatController extends Controller
             ], 409);
         }
 
-        $startedAt = $booking['consultation_started_at'] ?? null;
-        $startedTimestamp = is_string($startedAt) ? strtotime($startedAt) : false;
+        $endsAt = $booking['ends_at'] ?? null;
+        $endsTimestamp = is_string($endsAt) ? strtotime($endsAt) : false;
+        if ($endsTimestamp === false) {
+            $startedAt = $booking['consultation_started_at'] ?? null;
+            $startedTimestamp = is_string($startedAt) ? strtotime($startedAt) : false;
+            $endsTimestamp = $startedTimestamp !== false ? $startedTimestamp + 1800 : false;
+        }
+
         $canSend = ($booking['status'] ?? null) === 'active'
-            && $startedTimestamp !== false
-            && now('UTC')->getTimestamp() < $startedTimestamp + 1800;
+            && $endsTimestamp !== false
+            && now('UTC')->getTimestamp() < $endsTimestamp;
 
         return response()->json(['data' => [
             'booking' => $this->publicBooking(
@@ -166,6 +172,7 @@ class ConsultationChatController extends Controller
             'payment_id' => $booking['payment_id'] ?? null,
             'rejection_reason' => $booking['rejection_reason'] ?? null,
             'consultation_started_at' => $booking['consultation_started_at'] ?? null,
+            'ends_at' => $booking['ends_at'] ?? null,
             'consultation_completed_at' => $booking['consultation_completed_at'] ?? null,
             'created_at' => $booking['created_at'],
         ];

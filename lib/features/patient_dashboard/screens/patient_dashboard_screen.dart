@@ -18,15 +18,28 @@ class PatientDashboardScreen extends ConsumerWidget {
     final bookings =
         ref.watch(patientHistoryProvider).value ?? const <Booking>[];
 
-    // Ambil sesi booking pasien yang sedang aktif atau perlu perhatian
-    final activeOrPendingBooking = bookings.cast<Booking?>().firstWhere(
-      (b) =>
-          b!.status == 'active' ||
-          b.status == 'confirmed' ||
-          b.status == 'paid_pending_midwife' ||
-          b.status == 'awaiting_payment',
+    // Sesi aktif yang chat-nya masih terbuka (belum lewat 30 menit)
+    final liveActiveBooking = bookings.cast<Booking?>().firstWhere(
+      (b) => b != null && b.isChatActive,
       orElse: () => null,
     );
+
+    // Sesi aktif yang sudah lewat 30 menit dan sedang menunggu bidan mengisi hasil
+    final awaitingResultBooking = bookings.cast<Booking?>().firstWhere(
+      (b) => b != null && b.isAwaitingResult,
+      orElse: () => null,
+    );
+
+    // Ambil sesi booking pasien yang sedang aktif atau perlu perhatian
+    final activeOrPendingBooking = liveActiveBooking ??
+        bookings.cast<Booking?>().firstWhere(
+          (b) =>
+              b!.status == 'confirmed' ||
+              b.status == 'paid_pending_midwife' ||
+              b.status == 'awaiting_payment',
+          orElse: () => null,
+        ) ??
+        awaitingResultBooking;
     final latestCompletedBooking = bookings.cast<Booking?>().firstWhere(
       (b) => b!.isCompleted,
       orElse: () => null,
@@ -80,7 +93,7 @@ class PatientDashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Muat ulang',
             icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(patientHistoryProvider),
+            onPressed: () => ref.refresh(patientHistoryProvider.future),
           ),
           IconButton(
             tooltip: 'Keluar Akun',
@@ -92,7 +105,10 @@ class PatientDashboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(patientHistoryProvider.future),
+        child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,10 +230,10 @@ class PatientDashboardScreen extends ConsumerWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: activeOrPendingBooking.status == 'active'
+                    color: activeOrPendingBooking.isChatActive
                         ? AppColors.success
                         : AppColors.border,
-                    width: activeOrPendingBooking.status == 'active'
+                    width: activeOrPendingBooking.isChatActive
                         ? 1.8
                         : 1.0,
                   ),
@@ -247,7 +263,11 @@ class PatientDashboardScreen extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        StatusBadge(status: activeOrPendingBooking.status),
+                        StatusBadge(
+                          status: activeOrPendingBooking.isAwaitingResult
+                              ? 'awaiting_result'
+                              : activeOrPendingBooking.status,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -271,11 +291,20 @@ class PatientDashboardScreen extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    if (activeOrPendingBooking.status == 'active')
+                    if (activeOrPendingBooking.isChatActive)
                       AppButton(
                         label: 'Masuk Ruang Chat Sekarang (Aktif)',
                         icon: Icons.chat_rounded,
                         backgroundColor: AppColors.success,
+                        onPressed: () => context.push(
+                          '/consultation-chat/${activeOrPendingBooking.id}',
+                        ),
+                      )
+                    else if (activeOrPendingBooking.isAwaitingResult)
+                      AppButton(
+                        label: 'Lihat Riwayat Chat (Menunggu Hasil Bidan)',
+                        icon: Icons.chat_outlined,
+                        isOutlined: true,
                         onPressed: () => context.push(
                           '/consultation-chat/${activeOrPendingBooking.id}',
                         ),
@@ -498,6 +527,7 @@ class PatientDashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }

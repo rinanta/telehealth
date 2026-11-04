@@ -216,9 +216,14 @@ class _ConsultationChatScreenState
           if (!booking.isCompleted)
             ConsultationTimerBanner(
               startedAt: startedAt,
+              endsAt: booking.endsAt,
               durationMinutes: 30,
               onTimerExpired: () {
-                setState(() => _isTimerExpired = true);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && !_isTimerExpired) {
+                    setState(() => _isTimerExpired = true);
+                  }
+                });
               },
             ),
 

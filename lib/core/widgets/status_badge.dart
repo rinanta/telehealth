@@ -38,6 +38,12 @@ class StatusBadge extends StatelessWidget {
         label = 'Sesi Aktif';
         icon = Icons.chat_bubble_rounded;
         break;
+      case 'awaiting_result':
+        bg = AppColors.warningContainer;
+        fg = const Color(0xFFB45309);
+        label = 'Menunggu Hasil Bidan';
+        icon = Icons.pending_actions_rounded;
+        break;
       case 'completed':
         bg = const Color(0xFFF1F5F9);
         fg = AppColors.textSecondary;
@@ -49,6 +55,12 @@ class StatusBadge extends StatelessWidget {
         fg = AppColors.danger;
         label = 'Ditolak';
         icon = Icons.cancel_outlined;
+        break;
+      case 'no_show':
+        bg = AppColors.dangerContainer;
+        fg = AppColors.danger;
+        label = 'Tidak Hadir';
+        icon = Icons.person_off_outlined;
         break;
       default:
         bg = AppColors.surfaceVariant;
