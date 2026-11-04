@@ -21,7 +21,7 @@ TeleBunda AI membantu pasien mendapatkan informasi awal seputar kehamilan melalu
 
 # 2. Sasaran, Ruang Lingkup, dan Batasan
 
-- Sasaran MVP: demo end-to-end untuk 1 pasien dan 1 bidan, dengan minimal 1 transaksi sandbox dan 1 sesi konsultasi selesai.
+- Sasaran MVP: alur end-to-end untuk pasien dan bidan, dengan minimal 1 transaksi sandbox dan 1 sesi konsultasi selesai.
 - Dalam lingkup: register/login, role, dashboard pasien/bidan, chatbot Gemini, profil & jadwal bidan, booking, Midtrans Sandbox, chat teks, timer sesi 30 menit, catatan hasil, dan riwayat.
 - Di luar lingkup MVP: video/audio call, pengiriman obat, e-resep formal, admin web, konsultasi 24 jam, sistem rekam medis rumah sakit, dan transaksi uang sungguhan.
 - Keselamatan: AI hanya edukasi, bukan diagnosis atau pengganti pemeriksaan. Keluhan darurat harus diarahkan ke layanan medis segera; bidan menyarankan tindak lanjut sesuai kompetensi dan kewenangan.
@@ -32,7 +32,7 @@ TeleBunda AI membantu pasien mendapatkan informasi awal seputar kehamilan melalu
 | ----------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | Pasien                  | Daftar mandiri; memilih "Pasien" pada UI                                                         | Chat AI, cari bidan, booking, bayar sandbox, chat sesi sendiri, lihat hasil sendiri           |
 | Bidan                   | Dapat memilih "Bidan" pada UI, tetapi akses hanya jika akun sudah diverifikasi/admin-provisioned | Lihat booking yang ditujukan kepadanya, konfirmasi, mulai sesi, chat, tulis hasil, selesaikan |
-| Admin teknis (tanpa UI) | Proses admin terbatas melalui Firebase Console atau skrip/command Laravel yang hanya dijalankan server | Verifikasi akun bidan, seeding jadwal dan pemulihan data uji; tidak tersedia sebagai registrasi mandiri |
+| Admin teknis (tanpa UI) | Proses admin terbatas melalui Firebase Console atau skrip/command Laravel yang hanya dijalankan server | Verifikasi akun bidan, pengaturan data operasional, dan pemulihan data; tidak tersedia sebagai registrasi mandiri |
 
 Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan dengan status pending_verification; pilihan itu tidak memberikan kewenangan bidan. Role dan status verifikasi ditetapkan/diubah server, dan hanya bidan yang disetujui admin dapat memakai fitur bidan. Login memuat role tepercaya dari backend dan mengarahkan pengguna otomatis. Pilihan role saat login, jika tetap ditampilkan, hanya preferensi tampilan dan tidak digunakan untuk otorisasi.
 
@@ -181,15 +181,15 @@ Untuk konfigurasi lokal, isi `MIDTRANS_ENVIRONMENT=sandbox` dan `MIDTRANS_SERVER
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | 0\. Persiapan kerja          | Buat backlog/issue dari PRD yang disetujui, tetapkan pemilik dan urutan dependensi                 | Tugas awal jelas dan dapat dikerjakan paralel tanpa mengubah kontrak yang disepakati |
 | 1\. Desain                   | Fida: wireframe dan Figma/Stitch 15 layar, design system, state gagal/loading                        | Navigasi dan state UI dapat diuji sebagai prototype    |
-| 2\. Infrastruktur            | Rinanta: Flutter; Iqbal: Laravel, Firebase Auth/Firestore; siapkan environment                        | Flutter dapat memanggil `/api/health` Laravel dari perangkat demo |
-| 3\. Auth & role              | Register/login Firebase, verifikasi token Laravel, profil/role, status bidan, seed akun demo         | Pasien dan bidan terverifikasi masuk sesuai role; akses ilegal ditolak API |
+| 2\. Infrastruktur            | Rinanta: Flutter; Iqbal: Laravel, Firebase Auth/Firestore; siapkan environment                        | Flutter dapat memanggil `/api/health` Laravel dari perangkat pengujian |
+| 3\. Auth & role              | Register/login Firebase, verifikasi token Laravel, profil/role, status bidan, provisioning admin         | Pasien dan bidan terverifikasi masuk sesuai role; akses ilegal ditolak API |
 | 4\. Data bidan & slot        | Profil bidan, slot dan kalender dari Firestore/backend; sambungkan UI                                 | Slot yang tampil berasal dari backend dan sudah difilter valid/tersedia |
 | 5\. Booking tanpa bayar      | Hold slot atomik, expiry, transisi booking dan proteksi double-book                                   | Dua permintaan bersamaan pada slot sama hanya menghasilkan satu hold |
 | 6\. Chat AI                  | Endpoint Gemini Laravel, prompt keselamatan, validasi/rate limit, tanpa penyimpanan chat MVP         | Jawaban edukasi, eskalasi red flag, dan state error provider teruji |
-| 7\. Konsultasi DEV           | Bypass paid hanya di environment DEV; start sesi, chat realtime, batas waktu server, hasil           | Demo pasien-bidan end-to-end; bypass tidak tersedia di staging/production |
+| 7\. Konsultasi               | Start sesi, chat, batas waktu server, dan hasil konsultasi melalui API terotorisasi           | Alur pasien-bidan end-to-end; tidak ada bypass pembayaran |
 | 8\. Midtrans Sandbox            | Checkout API, redirect, callback HTTPS, validasi webhook dan idempotensi                             | Pembayaran sandbox valid mengubah status sekali; callback ulang/terlambat ditangani |
-| 9\. Integrasi final          | Hapus bypass paid DEV dan verifikasi akses per status/role                                            | Sesi hanya dimulai dari booking paid+confirmed          |
-| 10\. QA & demo               | Uji dua perangkat, jaringan buruk, timer, role, slot ganda, status pembayaran/no-show                | UAT Bagian 13 lulus; APK demo dan bukti pengujian tersedia |
+| 9\. Integrasi final          | Verifikasi akses per status/role                                            | Sesi hanya dimulai dari booking paid+confirmed          |
+| 10\. QA                     | Uji dua perangkat, jaringan buruk, timer, role, slot ganda, status pembayaran/no-show                | UAT Bagian 13 lulus dan bukti pengujian tersedia |
 
 # 12. Pembagian Tanggung Jawab dan Handoff
 
@@ -197,7 +197,7 @@ Untuk konfigurasi lokal, isi `MIDTRANS_ENVIRONMENT=sandbox` dan `MIDTRANS_SERVER
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fida     | PRD, desain UI dan prototype, sistem status/state, acceptance checklist, uji integrasi, laporan/PPT/video; serahkan file Figma dan flow ke Rinanta/Iqbal                        |
 | Rinanta  | Flutter page routes, Firebase Auth SDK, API client Bearer token, form, UI chat, listener, payment redirect, error handling, build APK                                           |
-| Iqbal    | Laravel APIs/middleware, Firestore collections & rules, seed bidan, booking atomik, Gemini server-side, Midtrans Sandbox checkout/webhook, timer server-side dan pengujian backend |
+| Iqbal    | Laravel APIs/middleware, Firestore collections & rules, provisioning bidan, booking atomik, Gemini server-side, Midtrans Sandbox checkout/webhook, timer server-side dan pengujian backend |
 
 # 13. Checklist Uji Penerimaan (UAT)
 
@@ -227,9 +227,9 @@ Untuk konfigurasi lokal, isi `MIDTRANS_ENVIRONMENT=sandbox` dan `MIDTRANS_SERVER
 | Konsultasi melewati 30 menit / tidak hadir         | State akhir jelas, kebijakan kompensasi dan petunjuk hubungi bantuan                            |
 | Data medis sensitif                                | Minimalisasi data, hak akses ketat, hindari logging keluhan mentah dan simpan kebijakan retensi |
 
-# 15. Definition of Done dan Target Demo
+# 15. Definition of Done dan Target UAT
 
-MVP dinyatakan selesai jika dua akun berbeda berhasil menjalankan alur pasien booking -> pembayaran Midtrans Sandbox terverifikasi -> bidan menerima -> chat real-time 30 menit -> bidan menyelesaikan catatan -> pasien melihat hasil/riwayat. Semua status ditampilkan jelas; pengujian keamanan role, status payment, dan timer lulus. APK dapat dipasang pada Android dan Laravel dapat diakses oleh perangkat demo.
+MVP dinyatakan selesai jika dua akun berbeda berhasil menjalankan alur pasien booking -> pembayaran Midtrans Sandbox terverifikasi -> bidan menerima -> chat polling 30 menit -> bidan menyelesaikan catatan -> pasien melihat hasil/riwayat. Semua status ditampilkan jelas; pengujian keamanan role, status payment, dan timer lulus. APK dapat dipasang pada Android dan Laravel dapat diakses oleh perangkat pengujian.
 
 # 16. Referensi Teknis dan Catatan Verifikasi
 

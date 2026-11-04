@@ -217,95 +217,60 @@ class BookingStatusScreen extends ConsumerWidget {
                 onPressed: () => context.push('/payment-checkout/${booking.id}'),
               )
             else if (booking.isConfirmed)
-              Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.lock_clock,
+                      color: AppColors.secondary,
+                      size: 20,
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.lock_clock,
-                          color: AppColors.secondary,
-                          size: 20,
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Jadwal terkonfirmasi. Chat akan aktif saat Bidan membuka sesi sesuai waktu konsultasi.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.secondaryDark,
                         ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Jadwal terkonfirmasi. Chat akan aktif saat Bidan membuka sesi sesuai waktu konsultasi.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.secondaryDark,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Shortcut demo untuk kemudahan penguji
-                  AppButton(
-                    label: 'Simulasi Bidan Mulai Sesi (Demo Tester)',
-                    icon: Icons.play_arrow_rounded,
-                    backgroundColor: AppColors.secondary,
-                    onPressed: () async {
-                      await ref
-                          .read(bookingsListProvider.notifier)
-                          .startConsultation(booking.id);
-                      if (context.mounted) {
-                        context.push('/consultation-chat/${booking.id}');
-                      }
-                    },
-                  ),
-                ],
+                  ],
+                ),
               )
             else if (booking.isPaidPendingMidwife)
-              Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.infoContainer,
-                      borderRadius: BorderRadius.circular(12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.infoContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.hourglass_top,
+                      color: AppColors.info,
+                      size: 20,
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.hourglass_top,
-                          color: AppColors.info,
-                          size: 20,
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Pembayaran Anda telah diterima. Menunggu Bidan mengonfirmasi jadwal.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF1E3A8A),
                         ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Pembayaran Anda telah diterima. Menunggu Bidan mengonfirmasi jadwal.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF1E3A8A),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Shortcut demo simulasi terima booking
-                  AppButton(
-                    label: 'Simulasi Bidan Terima Booking (Demo Tester)',
-                    icon: Icons.thumb_up_alt_outlined,
-                    backgroundColor: AppColors.info,
-                    onPressed: () async {
-                      await ref
-                          .read(bookingsListProvider.notifier)
-                          .midwifeAccept(booking.id);
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
 
             const SizedBox(height: 24),

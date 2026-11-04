@@ -18,29 +18,27 @@ and acceptance criteria are in [PRD_TeleBunda_AI_MVP.md](./PRD_TeleBunda_AI_MVP.
 The app authenticates with Firebase, then sends its Firebase ID token as a
 Bearer token to Laravel. Laravel verifies the token and reads/writes user
 profiles in Firestore through its REST API. Patient profiles are verified at
-registration; midwife applications are always created as pending. The demo
-account presets remain available in debug builds and do not authenticate with
-the backend.
+registration; midwife applications are always created as pending until an
+administrator verifies them in Firestore.
 
 ## Midtrans Sandbox payment setup
 
-Payments use Midtrans Snap (redirect). Only the backend talks to Midtrans.
+Payments use Midtrans Snap in Sandbox mode for this project. Only the backend
+talks to Midtrans; Flutter never receives the Server Key.
 
 1. Create a Midtrans account and switch the dashboard to **Sandbox**.
-2. Copy the Sandbox **Server Key** (`SB-Mid-server-...`) from
-   Settings → Access Keys into `backend/.env`:
+2. Copy the Sandbox Server Key from Settings → Access Keys into `backend/.env`:
 
    ```
    MIDTRANS_ENVIRONMENT=sandbox
    MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxx
    ```
 
-3. Expose Laravel over public HTTPS (for example a Cloudflare Tunnel or ngrok)
-   and set **Settings → Configuration → Payment Notification URL** to
-   `https://<your-tunnel>/api/webhooks/midtrans`.
-4. Pay with the Midtrans Sandbox simulators (virtual account, QRIS, GoPay,
-   test cards). The booking only becomes `paid_pending_midwife` after the
-   backend verifies the notification signature and the transaction status.
+3. Expose Laravel over public HTTPS (for example ngrok) and set the Midtrans
+   Payment Notification URL to `https://<tunnel>/api/webhooks/midtrans`.
+4. Use the Midtrans Sandbox payment methods. A booking becomes
+   `paid_pending_midwife` only after Laravel verifies the signature, payment
+   status, order ID, and amount.
 
 ## Local checks
 
@@ -58,5 +56,12 @@ composer install
 php artisan test
 ```
 
-For Android emulator testing, the API base URL uses `10.0.2.2:8000` to reach
-Laravel on the development machine.
+The Flutter API base URL is configurable with `--dart-define=API_BASE_URL=...`.
+For the currently running development tunnel, use:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=https://<tunnel>/api
+```
+
+For a local Android emulator, use `http://10.0.2.2:8000/api`; for a physical
+device on the same LAN, use the computer's LAN address.
