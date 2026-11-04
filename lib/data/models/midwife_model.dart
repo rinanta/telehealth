@@ -2,26 +2,26 @@ class Midwife {
   final String uid;
   final String name;
   final String credentialLabel; // contoh: Bdn. Siti Rahmawati, S.Tr.Keb
-  final String bio;
-  final double rating;
-  final int reviewCount;
-  final int experienceYears;
-  final int price; // contoh: 50000
-  final String strNumber;
-  final String hospitalAffiliation;
+  final String? bio;
+  final double? rating;
+  final int? reviewCount;
+  final int? experienceYears;
+  final int? price; // contoh: 50000
+  final String? strNumber;
+  final String? hospitalAffiliation;
   final bool active;
 
   const Midwife({
     required this.uid,
     required this.name,
     required this.credentialLabel,
-    required this.bio,
-    this.rating = 4.9,
-    this.reviewCount = 128,
-    required this.experienceYears,
-    required this.price,
-    required this.strNumber,
-    required this.hospitalAffiliation,
+    this.bio,
+    this.rating,
+    this.reviewCount,
+    this.experienceYears,
+    this.price,
+    this.strNumber,
+    this.hospitalAffiliation,
     this.active = true,
   });
 
@@ -41,15 +41,15 @@ class Midwife {
 
   factory Midwife.fromJson(Map<String, dynamic> json) => Midwife(
     uid: json['uid'] as String,
-    name: json['name'] as String,
+    name: json['display_name'] as String,
     credentialLabel: json['credential_label'] as String,
-    bio: json['bio'] as String,
-    rating: (json['rating'] as num?)?.toDouble() ?? 4.9,
-    reviewCount: json['review_count'] as int? ?? 0,
-    experienceYears: json['experience_years'] as int? ?? 5,
-    price: json['price'] as int? ?? 50000,
-    strNumber: json['str_number'] as String? ?? '',
-    hospitalAffiliation: json['hospital_affiliation'] as String? ?? 'Praktik Mandiri Bidan',
+    bio: json['bio'] as String?,
+    rating: (json['rating'] as num?)?.toDouble(),
+    reviewCount: json['review_count'] as int?,
+    experienceYears: json['experience_years'] as int?,
+    price: (json['price'] as num?)?.toInt(),
+    strNumber: json['str_number'] as String?,
+    hospitalAffiliation: json['hospital_affiliation'] as String?,
     active: json['active'] as bool? ?? true,
   );
 }

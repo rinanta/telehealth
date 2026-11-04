@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -13,7 +12,6 @@ import '../models/user_model.dart';
 class AuthRepository {
   final FirebaseAuth? _firebaseAuth;
   final ApiClient _apiClient;
-  bool _usingDemoAccount = false;
   AppUser? _currentUser;
   FirebaseAuth get _auth => _firebaseAuth ?? FirebaseAuth.instance;
 
@@ -21,58 +19,13 @@ class AuthRepository {
     : _firebaseAuth = firebaseAuth,
       _apiClient = apiClient {
     _apiClient.setTokenProvider(() async {
-      if (_usingDemoAccount) return null;
       return _auth.currentUser?.getIdToken();
     });
   }
 
   AppUser? get currentUser => _currentUser;
 
-  static final AppUser demoPatient = AppUser(
-    uid: 'patient_001',
-    name: 'Bunda Anisa Lestari',
-    email: 'pasien@telebunda.id',
-    role: 'patient',
-    verified: true,
-    bio: 'Ibu hamil trimester kedua (usia kehamilan 22 minggu)',
-    createdAt: DateTime.now().subtract(const Duration(days: 30)),
-  );
-
-  static final AppUser demoMidwifeVerified = AppUser(
-    uid: 'midwife_001',
-    name: 'Bdn. Siti Rahmawati, S.Tr.Keb',
-    email: 'bidan.siti@telebunda.id',
-    role: 'midwife',
-    verified: true,
-    credentialLabel: 'Bdn. Siti Rahmawati, S.Tr.Keb',
-    bio:
-        'Bidan Praktik Mandiri berpengalaman 8 tahun spesialisasi ANC dan persalinan nyaman.',
-    createdAt: DateTime.now().subtract(const Duration(days: 90)),
-  );
-
-  static final AppUser demoMidwifePending = AppUser(
-    uid: 'midwife_002',
-    name: 'Bdn. Novi Triana, Amd.Keb',
-    email: 'bidan.novi@telebunda.id',
-    role: 'midwife',
-    verified: false,
-    credentialLabel: 'Bdn. Novi Triana, Amd.Keb',
-    bio: 'Menunggu proses verifikasi dokumen STR oleh tim admin.',
-    createdAt: DateTime.now().subtract(const Duration(days: 2)),
-  );
-
   Future<AppUser> login(String email, String password) async {
-    if (kDebugMode && email == demoPatient.email) {
-      return _useDemoUser(demoPatient);
-    }
-    if (kDebugMode && email == demoMidwifeVerified.email) {
-      return _useDemoUser(demoMidwifeVerified);
-    }
-    if (kDebugMode && email == demoMidwifePending.email) {
-      return _useDemoUser(demoMidwifePending);
-    }
-
-    _usingDemoAccount = false;
     _apiClient.setAuthToken(null);
     await _auth.signInWithEmailAndPassword(email: email, password: password);
     _currentUser = await _fetchProfile();
@@ -106,15 +59,8 @@ class AuthRepository {
     return _currentUser!;
   }
 
-  void setCurrentUser(AppUser? user) {
-    _currentUser = user;
-    _usingDemoAccount = user != null;
-    _apiClient.setAuthToken(null);
-  }
-
   Future<AppUser?> restoreSession() async {
     if (Firebase.apps.isEmpty || _auth.currentUser == null) return null;
-    _usingDemoAccount = false;
     _currentUser = await _fetchProfile();
     return _currentUser;
   }
@@ -123,13 +69,11 @@ class AuthRepository {
     if (Firebase.apps.isNotEmpty) {
       await _auth.signOut();
     }
-    _usingDemoAccount = false;
     _apiClient.setAuthToken(null);
     _currentUser = null;
   }
 
   Future<void> _createFirebaseAccount(String email, String password) async {
-    _usingDemoAccount = false;
     _apiClient.setAuthToken(null);
 
     try {
@@ -161,13 +105,6 @@ class AuthRepository {
       throw const FormatException('The API returned an invalid user profile.');
     }
     return AppUser.fromJson(Map<String, dynamic>.from(response['data'] as Map));
-  }
-
-  AppUser _useDemoUser(AppUser user) {
-    _usingDemoAccount = true;
-    _apiClient.setAuthToken(null);
-    _currentUser = user;
-    return user;
   }
 }
 
@@ -223,11 +160,6 @@ class AuthNotifier extends StateNotifier<AppUser?> {
     } on DioException catch (error) {
       return describeAuthError(error);
     }
-  }
-
-  void switchDemoUser(AppUser user) {
-    _repo.setCurrentUser(user);
-    state = user;
   }
 
   Future<void> logout() async {

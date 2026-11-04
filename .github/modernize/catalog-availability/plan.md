@@ -4,7 +4,7 @@
 
 ## Summary
 
-Implement the FR-05 patient-facing midwife catalog and available-slot lookup using Laravel as the trusted API boundary and Firestore as the source of truth. Only active, verified midwives and future, valid, available 30-minute slots will be returned. Flutter will consume the API for Firebase-authenticated patients while retaining the existing local fixtures only for explicit demo accounts.
+Implement the FR-05 patient-facing midwife catalog and available-slot lookup using Laravel as the trusted API boundary and Firestore as the source of truth. Only active, verified midwives and future, valid, available 30-minute slots will be returned. Flutter will consume backend data only; frontend-only midwife and slot fixtures are removed and never used as a fallback.
 
 The current PRD does not define public midwife pricing, ratings, review counts, experience years, STR numbers, or clinic affiliations in the `midwives/{uid}` collection. These values must not be fabricated or exposed from another collection. Live-provider booking remains unavailable until the FR-06 atomic booking/hold endpoint and the price contract are defined and implemented.
 
@@ -16,7 +16,7 @@ The current PRD does not define public midwife pricing, ratings, review counts, 
 **Testing**: Laravel feature tests with mocked `FirebaseService`; Flutter tests for JSON parsing, provider states, and existing demo behavior  
 **Target Platform**: Laravel REST API and Flutter Android application  
 **Performance Goals**: Bounded Firestore queries and API timeouts; no client-side Firestore access for catalog or slot writes  
-**Constraints**: Follow PRD role/status authority; never trust client-provided role or verification state; preserve demo fixtures without presenting them as live data; use UTC timestamps and display using the app's existing local-time formatters.
+**Constraints**: Follow PRD role/status authority; never trust client-provided role or verification state; do not use frontend-only catalog fixtures or fabricated profile defaults; use UTC timestamps and display using the app's existing local-time formatters.
 
 ### Scope
 
@@ -33,7 +33,7 @@ No separate `constitution.md` was found. The plan follows the governing PRD and 
 | Backend owns authorization and eligibility decisions | PASS | Patient role is read from `users/{uid}`; active/verified and slot status are filtered by Laravel/Firestore queries. |
 | Client cannot set trusted status or availability | PASS | This scope adds read-only endpoints only. |
 | Firestore remains the source of truth; no SQL database is added | PASS | Reads use the existing `FirebaseService` and Firestore REST API. |
-| Demo data is not production data | PASS | Existing fixtures remain behind the debug demo-account path; missing live fields are not replaced with sample values. |
+| Catalog data comes from the backend only | PASS | Midwife and slot fixtures are removed; missing optional fields remain absent rather than receiving sample values. |
 | Keep the change scoped to the requested feature | PASS | Booking creation, payment, and midwife approval flows are deferred. |
 
 ## Applied Guidelines
@@ -66,7 +66,7 @@ No separate `constitution.md` was found. The plan follows the governing PRD and 
 #### 2.2 Connect Flutter models and repository to the API
 - **Requirements**: FR-05
 - **Design inputs**: `lib/data/models/midwife_model.dart`, `lib/data/models/slot_model.dart`, `lib/data/repositories/midwife_repository.dart`, `lib/core/network/api_client.dart`
-- **Description**: Make production-only profile fields optional rather than supplying demo defaults. Add asynchronous repository/providers for catalog and slots using the existing authenticated `ApiClient`. Select local fixtures only when the current account is an explicit debug demo account.
+- **Description**: Make fields absent from the PRD/API contract optional rather than supplying demo defaults. Remove frontend-only midwife and generated slot fixtures; fetch catalog and slot data only through the authenticated backend API, with no local fallback.
 
 #### 2.3 Render catalog and slot states without misleading live data
 - **Requirements**: FR-05; FR-14 (catalog/slot loading, empty, and network failure states only)
@@ -105,11 +105,11 @@ lib/
   2. Patient sees an empty state when Firestore contains no eligible midwives.
   3. Patient opens a provider and sees only future, available, valid 30-minute slots.
   4. Missing/expired authentication and non-patient roles are rejected.
-  5. Demo accounts still use clearly identified local fixtures; live API data does not inherit demo values.
+  5. Catalog and slot data are never synthesized in Flutter; absent fields remain absent.
 - **primaryValidationStack**: Laravel feature tests with mocked Firebase service; Flutter unit/widget tests; `flutter analyze`; Android debug build.
 - **Environment requirements**: PHP/Composer dependencies and Flutter SDK; no live Firebase credentials needed for automated tests.
 - **knownGaps**: Runtime verification against real Firestore requires seeded, trusted midwife and slot documents. Booking and payment cannot be validated in this plan because FR-06/07 are out of scope.
-- **Test data strategy**: Use isolated mocked Firebase profiles and Firestore responses; do not write test records to the configured project.
+- **Test data strategy**: Use isolated mocked Firebase profiles and Firestore responses; do not write test records to the configured project. Flutter tests assert that the catalog has no local fixtures.
 - **Acceptance criteria**: All automated checks pass; API eligibility and role rules match the PRD; live UI does not invent profile or pricing data; empty/error/loading states are visible and recoverable.
 - **Validation review expectations**: Confirm no unauthorized role can query the catalog, no unapproved/inactive profile is returned, and no stale or malformed slot is presented as available.
 
@@ -126,14 +126,15 @@ Requirements outside the stated FR-05 feature slice are intentionally not mapped
 
 ### Phase 1: Foundational
 
-- [ ] T001 [Plan:1.1] Add patient-role middleware based on the trusted `users/{uid}` profile in `backend/app/Http/Middleware/RequirePatientRole.php`.
-- [ ] T002 [Plan:1.1] Add allowlisted Firestore queries for active verified midwives and available future 30-minute slots; log malformed records without profile data in `backend/app/Services/FirebaseService.php`.
+- [x] T001 [Plan:1.1] Add patient-role middleware based on the trusted `users/{uid}` profile in `backend/app/Http/Middleware/RequirePatientRole.php`.
+- [x] T002 [Plan:1.1] Add allowlisted Firestore queries for active verified midwives and available future 30-minute slots; log malformed records without profile data in `backend/app/Services/FirebaseService.php`.
 
 ### Phase 2: User Story 1 — Browse verified midwives and available slots
 
-- [ ] T003 [US1] [Plan:2.1] Add `GET /api/midwives` and `GET /api/midwives/{id}/slots` with patient authorization and public response allowlists in `backend/app/Http/Controllers/Api/MidwifeController.php` and `backend/routes/api.php`.
-- [ ] T004 [US1] [Plan:2.1,2.4] Add feature coverage for role enforcement, verified/active catalog filtering, slot eligibility, empty data, and non-disclosure of internal fields in `backend/tests/Feature/MidwifeCatalogEndpointTest.php`.
-- [ ] T005 [US1] [Plan:2.2] Update live JSON decoding so absent rating, price, STR, experience, and affiliation remain absent rather than receiving demo defaults in `lib/data/models/midwife_model.dart` and `lib/data/models/slot_model.dart`.
-- [ ] T006 [US1] [Plan:2.2] Add asynchronous API-backed catalog/detail/slot providers while retaining local fixtures only for explicit debug demo accounts in `lib/data/repositories/auth_repository.dart` and `lib/data/repositories/midwife_repository.dart`.
-- [ ] T007 [US1] [Plan:2.3] Update catalog, detail, and booking screens for loading/empty/error/retry states; hide unavailable live fields and prevent live users from entering the in-memory booking flow in `lib/features/midwife_catalog/screens/midwife_catalog_screen.dart`, `lib/features/midwife_catalog/screens/midwife_detail_screen.dart`, and `lib/features/booking/screens/booking_form_screen.dart`.
-- [ ] T008 [US1] [Plan:2.4] Add focused Flutter tests for response parsing, missing optional values, async UI states, and demo fixtures; run Flutter analysis and Android debug build.
+- [x] T003 [US1] [Plan:2.1] Add `GET /api/midwives` and `GET /api/midwives/{id}/slots` with patient authorization and public response allowlists in `backend/app/Http/Controllers/Api/MidwifeController.php` and `backend/routes/api.php`.
+- [x] T004 [US1] [Plan:2.1,2.4] Add feature coverage for role enforcement, verified/active catalog filtering, slot eligibility, empty data, and non-disclosure of internal fields in `backend/tests/Feature/MidwifeCatalogEndpointTest.php`.
+- [x] T005 [US1] [Plan:2.2] Update live JSON decoding so absent rating, price, STR, experience, and affiliation remain absent rather than receiving demo defaults in `lib/data/models/midwife_model.dart` and `lib/data/models/slot_model.dart`.
+- [x] T006 [US1] [Plan:2.2] Implement authenticated API-backed catalog/detail/slot providers with no local fallback in `lib/data/repositories/midwife_repository.dart`.
+- [x] T007 [US1] [Plan:2.3] Update catalog, detail, and booking screens for loading/empty/error/retry states; hide unavailable live fields and prevent live users from entering the in-memory booking flow in `lib/features/midwife_catalog/screens/midwife_catalog_screen.dart`, `lib/features/midwife_catalog/screens/midwife_detail_screen.dart`, and `lib/features/booking/screens/booking_form_screen.dart`.
+- [x] T008 [US1] [Plan:2.4] Add focused Flutter tests for response parsing, missing optional values, async UI states, and demo fixtures; run Flutter analysis and Android debug build.
+- [x] T009 [US1] [Plan:2.2,2.4] Remove frontend-only midwife and generated slot fixtures and assert optional API fields are not fabricated in `lib/data/repositories/midwife_repository.dart`, `lib/data/models/midwife_model.dart`, and `test/midwife_catalog_data_test.dart`.

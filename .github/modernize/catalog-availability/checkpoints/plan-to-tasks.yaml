@@ -8,7 +8,7 @@ summary:
   covered_plan_items: 5
   missing_plan_items: 0
   coverage_percentage: 100.0
-  total_tasks_generated: 8
+  total_tasks_generated: 9
   orphan_tasks: 0
 
 phases:
@@ -40,7 +40,9 @@ phases:
           - task_id: "T005"
             description: "Decode missing live-only profile fields without demo defaults"
           - task_id: "T006"
-            description: "Add authenticated API providers and explicit demo behavior"
+            description: "Add authenticated API providers without local fallback"
+          - task_id: "T009"
+            description: "Remove frontend catalog fixtures and test for fabricated optional values"
         notes: ""
       - item_id: "2.3"
         description: "Render catalog and slot states without misleading live data"

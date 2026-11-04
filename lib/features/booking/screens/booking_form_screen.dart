@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../core/widgets/app_button.dart';
+import '../../../data/models/midwife_model.dart';
 import '../../../data/models/slot_model.dart';
-import '../../../data/repositories/auth_repository.dart';
-import '../../../data/repositories/booking_repository.dart';
 import '../../../data/repositories/midwife_repository.dart';
 
 class BookingFormScreen extends ConsumerStatefulWidget {
@@ -19,73 +16,73 @@ class BookingFormScreen extends ConsumerStatefulWidget {
 }
 
 class _BookingFormScreenState extends ConsumerState<BookingFormScreen> {
-  final _complaintController = TextEditingController(
-    text: 'Sering pusing ringan saat beranjak dari tempat tidur dan kram perut sesekali setelah aktivitas.',
-  );
   ConsultationSlot? _selectedSlot;
-  bool _isLoading = false;
-  String? _errorMessage;
-
-  @override
-  void dispose() {
-    _complaintController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _handleConfirmBooking() async {
-    if (_selectedSlot == null) {
-      setState(() => _errorMessage = 'Harap pilih salah satu jadwal slot waktu konsultasi.');
-      return;
-    }
-
-    if (_complaintController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Harap tuliskan keluhan atau topik yang ingin dikonsultasikan.');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final midwife = ref.read(midwifeRepositoryProvider).getMidwifeById(widget.midwifeId);
-      final patient = ref.read(authStateProvider) ?? AuthRepository.demoPatient;
-
-      if (midwife == null) throw Exception('Data bidan tidak valid');
-
-      // FR-06: Buat booking + hold slot -> status awaiting_payment
-      final booking = await ref.read(bookingsListProvider.notifier).createBooking(
-            patient: patient,
-            midwife: midwife,
-            slot: _selectedSlot!,
-            complaint: _complaintController.text.trim(),
-          );
-
-      if (!mounted) return;
-      // Langsung diarahkan ke UI-08 (Checkout Mayar Sandbox)
-      context.pushReplacement('/mayar-checkout/${booking.id}');
-    } catch (e) {
-      setState(() => _errorMessage = 'Gagal membuat reservasi: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    final midwife = ref.watch(midwifeRepositoryProvider).getMidwifeById(widget.midwifeId);
-    final slots = ref.watch(midwifeRepositoryProvider).getAvailableSlots(widget.midwifeId);
+    final midwife = ref.watch(midwifeByIdProvider(widget.midwifeId));
 
-    if (midwife == null) {
-      return Scaffold(
+    return midwife.when(
+      loading: () => Scaffold(
         appBar: AppBar(title: const Text('Reservasi Jadwal')),
-        body: const Center(child: Text('Bidan tidak ditemukan.')),
-      );
-    }
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stackTrace) => Scaffold(
+        appBar: AppBar(title: const Text('Reservasi Jadwal')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Profil bidan tidak dapat dimuat.'),
+              TextButton(
+                onPressed: () => ref.invalidate(midwifeByIdProvider(widget.midwifeId)),
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (item) {
+        if (item == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Reservasi Jadwal')),
+            body: const Center(child: Text('Bidan tidak ditemukan.')),
+          );
+        }
 
-    // Set default slot jika belum dipilih
-    _selectedSlot ??= slots.first;
+        final slots = ref.watch(availableSlotsProvider(widget.midwifeId));
+        return slots.when(
+          loading: () => Scaffold(
+            appBar: AppBar(title: const Text('Reservasi Jadwal')),
+            body: const Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, stackTrace) => Scaffold(
+            appBar: AppBar(title: const Text('Reservasi Jadwal')),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Jadwal bidan tidak dapat dimuat.'),
+                  TextButton(
+                    onPressed: () => ref.invalidate(availableSlotsProvider(widget.midwifeId)),
+                    child: const Text('Coba lagi'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          data: (items) => _buildBookingForm(context, item, items),
+        );
+      },
+    );
+  }
+
+  Widget _buildBookingForm(
+    BuildContext context,
+    Midwife midwife,
+    List<ConsultationSlot> slots,
+  ) {
+    _selectedSlot ??= slots.isEmpty ? null : slots.first;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -138,7 +135,19 @@ class _BookingFormScreenState extends ConsumerState<BookingFormScreen> {
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
             ),
             const SizedBox(height: 10),
-            ListView.separated(
+            if (slots.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'Belum ada jadwal tersedia untuk bidan ini.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: slots.length,
@@ -215,70 +224,10 @@ class _BookingFormScreenState extends ConsumerState<BookingFormScreen> {
 
             const SizedBox(height: 24),
 
-            // Keluhan Singkat Ibu
-            const Text(
-              'Keluhan atau Hal yang Ingin Dikonsultasikan',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _complaintController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Tuliskan usia kehamilan dan gejala/keluhan yang Bunda rasakan...',
-              ),
-            ),
-
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(_errorMessage!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
-            ],
-
             const SizedBox(height: 24),
-
-            // Rincian Pembayaran
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Biaya Sesi Konsultasi (30 Menit)', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                      Text(Formatters.toRupiah(midwife.price), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Biaya Layanan Platform', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                      Text('Rp 0 (Subsidi MVP)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Pembayaran', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                      Text(Formatters.toRupiah(midwife.price), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 28),
-            AppButton(
-              label: 'Konfirmasi & Lanjut ke Mayar Sandbox',
-              icon: Icons.lock_outline_rounded,
-              isLoading: _isLoading,
-              onPressed: _handleConfirmBooking,
+            const Text(
+              'Pemesanan akan tersedia setelah endpoint booking dibuat di backend.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 20),
           ],

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/formatters.dart';
 import '../../../data/models/midwife_model.dart';
 import '../../../data/repositories/midwife_repository.dart';
 
@@ -18,14 +17,47 @@ class MidwifeCatalogScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Katalog Bidan Terverifikasi'),
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: midwives.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 14),
-        itemBuilder: (context, index) {
-          final midwife = midwives[index];
-          return _buildMidwifeCard(context, midwife);
-        },
+      body: midwives.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Katalog bidan tidak dapat dimuat. Periksa koneksi lalu coba lagi.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => ref.invalidate(midwivesListProvider),
+                  child: const Text('Coba lagi'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        data: (items) => items.isEmpty
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text(
+                    'Belum ada bidan terverifikasi yang tersedia.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: items.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 14),
+                itemBuilder: (context, index) {
+                  return _buildMidwifeCard(context, items[index]);
+                },
+              ),
       ),
     );
   }
@@ -96,7 +128,7 @@ class MidwifeCatalogScreen extends ConsumerWidget {
                                 Icon(Icons.verified, size: 12, color: AppColors.success),
                                 SizedBox(width: 3),
                                 Text(
-                                  'STR Terverifikasi',
+                                  'Bidan Terverifikasi',
                                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF047857)),
                                 ),
                               ],
@@ -110,73 +142,35 @@ class MidwifeCatalogScreen extends ConsumerWidget {
                         style: const TextStyle(fontSize: 12, color: AppColors.secondaryDark, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.star_rounded, size: 15, color: Color(0xFFF59E0B)),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${midwife.rating} (${midwife.reviewCount})',
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.work_outline_rounded, size: 13, color: AppColors.textSecondary),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${midwife.experienceYears} th pengalaman',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              midwife.bio,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
-            ),
+            if (midwife.bio != null && midwife.bio!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                midwife.bio!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+              ),
+            ],
             const SizedBox(height: 14),
             const Divider(height: 1),
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Biaya Konsultasi 30 Menit', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                    Text(
-                      Formatters.toRupiah(midwife.price),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primary),
-                    ),
-                  ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                onPressed: () => context.push('/midwife-detail/${midwife.uid}'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  minimumSize: const Size(120, 38),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                ElevatedButton(
-                  onPressed: () => context.push('/midwife-detail/${midwife.uid}'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    minimumSize: const Size(120, 38),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: const Text('Pilih Jadwal', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ],
+                child: const Text('Lihat Profil', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              ),
             ),
           ],
         ),

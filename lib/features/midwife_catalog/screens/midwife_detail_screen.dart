@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
+import '../../../data/models/midwife_model.dart';
 import '../../../data/repositories/midwife_repository.dart';
 
 class MidwifeDetailScreen extends ConsumerWidget {
@@ -13,15 +14,38 @@ class MidwifeDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final midwife = ref.watch(midwifeRepositoryProvider).getMidwifeById(midwifeId);
+    final midwife = ref.watch(midwifeByIdProvider(midwifeId));
 
-    if (midwife == null) {
-      return Scaffold(
+    return midwife.when(
+      loading: () => Scaffold(
         appBar: AppBar(title: const Text('Detail Bidan')),
-        body: const Center(child: Text('Data bidan tidak ditemukan.')),
-      );
-    }
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stackTrace) => Scaffold(
+        appBar: AppBar(title: const Text('Detail Bidan')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Profil bidan tidak dapat dimuat.'),
+              TextButton(
+                onPressed: () => ref.invalidate(midwifeByIdProvider(midwifeId)),
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (item) => item == null
+          ? Scaffold(
+              appBar: AppBar(title: const Text('Detail Bidan')),
+              body: const Center(child: Text('Data bidan tidak ditemukan.')),
+            )
+          : _buildProfile(context, item),
+    );
+  }
 
+  Widget _buildProfile(BuildContext context, Midwife midwife) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -64,38 +88,6 @@ class MidwifeDetailScreen extends ConsumerWidget {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 13, color: AppColors.secondaryDark, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF59E0B)),
-                            const SizedBox(width: 4),
-                            Text('${midwife.rating} (${midwife.reviewCount} ulasan)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${midwife.experienceYears} Tahun Praktik',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -115,9 +107,20 @@ class MidwifeDetailScreen extends ConsumerWidget {
                 children: [
                   const Text('Verifikasi & Kredensial Medis', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
-                  _buildKredensialRow(Icons.verified, 'Nomor STR Bidan', midwife.strNumber),
-                  const Divider(height: 18),
-                  _buildKredensialRow(Icons.local_hospital_outlined, 'Fasilitas Praktik', midwife.hospitalAffiliation),
+                  if (midwife.strNumber != null && midwife.strNumber!.isNotEmpty)
+                    _buildKredensialRow(Icons.verified, 'Nomor STR Bidan', midwife.strNumber!),
+                  if (midwife.strNumber != null &&
+                      midwife.strNumber!.isNotEmpty &&
+                      midwife.hospitalAffiliation != null &&
+                      midwife.hospitalAffiliation!.isNotEmpty)
+                    const Divider(height: 18),
+                  if (midwife.hospitalAffiliation != null &&
+                      midwife.hospitalAffiliation!.isNotEmpty)
+                    _buildKredensialRow(
+                      Icons.local_hospital_outlined,
+                      'Fasilitas Praktik',
+                      midwife.hospitalAffiliation!,
+                    ),
                   const Divider(height: 18),
                   _buildKredensialRow(Icons.timer_outlined, 'Durasi Konsultasi', '30 Menit Sesi Chat Intensif'),
                 ],
@@ -138,11 +141,13 @@ class MidwifeDetailScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Tentang & Pendekatan Pelayanan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  Text(
-                    midwife.bio,
-                    style: const TextStyle(fontSize: 13, height: 1.6, color: AppColors.textSecondary),
-                  ),
+                  if (midwife.bio != null && midwife.bio!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      midwife.bio!,
+                      style: const TextStyle(fontSize: 13, height: 1.6, color: AppColors.textSecondary),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -160,18 +165,20 @@ class MidwifeDetailScreen extends ConsumerWidget {
         child: SafeArea(
           child: Row(
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Biaya Konsultasi', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                  Text(
-                    Formatters.toRupiah(midwife.price),
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 20),
+              if (midwife.price != null) ...[
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Biaya Konsultasi', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    Text(
+                      Formatters.toRupiah(midwife.price!),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 20),
+              ],
               Expanded(
                 child: AppButton(
                   label: 'Pilih Jadwal & Slot',

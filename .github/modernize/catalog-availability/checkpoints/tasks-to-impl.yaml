@@ -1,0 +1,280 @@
+metadata:
+  generated: "2026-11-04"
+  source_tasks: ".github/modernize/catalog-availability/plan.md#task-breakdown"
+  last_updated: "2026-11-04"
+
+summary:
+  total_tasks: 9
+  completed_tasks: 9
+  in_progress_tasks: 0
+  pending_tasks: 0
+  completion_percentage: 100.0
+
+tasks:
+  - task_id: "T001"
+    description: "Enforce patient role from the trusted Firestore profile"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "backend/app/Http/Middleware/RequirePatientRole.php"
+          changes:
+            - change_type: "added"
+              description: "Rejects requests whose trusted profile is not a patient."
+    verification:
+      build_passed: true
+      test_results:
+        command: "php artisan test"
+        passed: 13
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Role enforcement is exercised by the catalog feature tests."
+    upstream_trace:
+      plan_item: "1.1"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-1.1 → T001 → RequirePatientRole.php"
+  - task_id: "T002"
+    description: "Query eligible midwives and available slots in Firestore"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "backend/app/Services/FirebaseService.php"
+          changes:
+            - change_type: "modified"
+              description: "Adds typed Firestore structured queries and nested value decoding."
+    verification:
+      build_passed: true
+      test_results:
+        command: "php artisan test"
+        passed: 13
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Catalog endpoint tests cover filtering of malformed records."
+    upstream_trace:
+      plan_item: "1.1"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-1.1 → T002 → FirebaseService.php"
+  - task_id: "T003"
+    description: "Expose patient-only catalog and slot API routes"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "backend/app/Http/Controllers/Api/MidwifeController.php"
+          changes:
+            - change_type: "added"
+              description: "Returns allowlisted verified providers and valid 30-minute slots."
+        - file: "backend/routes/api.php"
+          changes:
+            - change_type: "modified"
+              description: "Registers both patient-protected GET endpoints."
+    verification:
+      build_passed: true
+      test_results:
+        command: "php artisan test"
+        passed: 13
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Route list confirms both catalog endpoints are registered."
+    upstream_trace:
+      plan_item: "2.1"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-2.1 → T003 → MidwifeController.php/routes/api.php"
+  - task_id: "T004"
+    description: "Cover catalog and slot endpoint authorization and response contract"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "backend/tests/Feature/MidwifeCatalogEndpointTest.php"
+          changes:
+            - change_type: "added"
+              description: "Covers missing token, wrong role, eligible catalog, empty list, slot filtering, and unverified midwife."
+    verification:
+      build_passed: true
+      test_results:
+        command: "php artisan test"
+        passed: 13
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: ""
+    upstream_trace:
+      plan_item: "2.1"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-2.1 → T004 → MidwifeCatalogEndpointTest.php"
+  - task_id: "T005"
+    description: "Avoid fabricated optional catalog fields"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "lib/data/models/midwife_model.dart"
+          changes:
+            - change_type: "modified"
+              description: "Optional profile values no longer receive hard-coded defaults."
+    verification:
+      build_passed: true
+      test_results:
+        command: "flutter tests"
+        passed: 17
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "flutter analyze, Android debug build, and hot reload also passed."
+    upstream_trace:
+      plan_item: "2.2"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-2.2 → T005 → lib/data/models/midwife_model.dart"
+  - task_id: "T006"
+    description: "Connect Flutter catalog and slots to authenticated API providers"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "lib/data/repositories/midwife_repository.dart"
+          changes:
+            - change_type: "modified"
+              description: "Uses authenticated API requests and FutureProviders without local fallback."
+        - file: "lib/data/models/midwife_model.dart"
+          changes:
+            - change_type: "modified"
+              description: "Parses the public API display_name contract."
+    verification:
+      build_passed: true
+      test_results:
+        command: "flutter tests"
+        passed: 17
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "flutter analyze and Android debug build passed."
+    upstream_trace:
+      plan_item: "2.2"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-2.2 → T006 → MidwifeRepository and API providers"
+  - task_id: "T009"
+    description: "Remove frontend catalog and generated slot fixtures"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "lib/data/repositories/midwife_repository.dart"
+          changes:
+            - change_type: "modified"
+              description: "Removed hard-coded midwives and locally generated availability slots."
+        - file: "test/midwife_catalog_data_test.dart"
+          changes:
+            - change_type: "added"
+              description: "Asserts there are no local catalog fixtures or fabricated optional values."
+    verification:
+      build_passed: true
+      test_results:
+        command: "flutter tests"
+        passed: 17
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "flutter analyze, Android debug build, and hot reload also passed."
+    upstream_trace:
+      plan_item: "2.2"
+      requirements: ["FR-05"]
+      full_trace: "FR-05 → Phase-2.2 → T009 → lib/data/repositories/midwife_repository.dart"
+  - task_id: "T007"
+    description: "Provide clear empty states and prevent demo booking assumptions"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "lib/features/midwife_catalog/screens/midwife_catalog_screen.dart"
+          changes:
+            - change_type: "modified"
+              description: "Shows an explicit empty catalog message."
+        - file: "lib/features/midwife_catalog/screens/midwife_detail_screen.dart"
+          changes:
+            - change_type: "modified"
+              description: "Hides optional profile sections when the data is absent."
+        - file: "lib/features/booking/screens/booking_form_screen.dart"
+          changes:
+            - change_type: "modified"
+              description: "Shows async slot states and keeps simulated booking disabled."
+    verification:
+      build_passed: true
+      test_results:
+        command: "flutter tests"
+        passed: 17
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "API-backed loading, empty, retry, and booking-unavailable states are wired."
+    upstream_trace:
+      plan_item: "2.3"
+      requirements: ["FR-05", "FR-14 (partial)"]
+      full_trace: "FR-05,FR-14 (partial) → Phase-2.3 → T007 → catalog/detail/booking screens"
+  - task_id: "T008"
+    description: "Test catalog models and states; run Flutter validation"
+    status: "completed"
+    implementation:
+      files_changed:
+        - file: "test/midwife_catalog_data_test.dart"
+          changes:
+            - change_type: "modified"
+              description: "Covers API data mapping and absence of fabricated optional values."
+        - file: "test/midwife_catalog_screen_test.dart"
+          changes:
+            - change_type: "added"
+              description: "Covers empty and retry UI states."
+    verification:
+      build_passed: true
+      test_results:
+        command: "flutter tests; flutter analyze; flutter build apk --debug"
+        passed: 17
+        failed: 0
+        skipped: 0
+        failures: []
+      notes: "Hot reload succeeded on the connected Android emulator."
+    upstream_trace:
+      plan_item: "2.4"
+      requirements: ["FR-05", "FR-14 (partial)"]
+      full_trace: "FR-05,FR-14 (partial) → Phase-2.4 → T008 → catalog tests"
+
+pending_tasks: []
+
+untracked_changes: []
+traceability_chain:
+  - chain_id: "TRACE-FR05-CATALOG-FIXTURES"
+    requirement: "FR-05"
+    plan_phase: "Phase-2"
+    plan_item: "2.2"
+    tasks: ["T005", "T009"]
+    files:
+      - "lib/data/models/midwife_model.dart"
+      - "lib/data/repositories/midwife_repository.dart"
+      - "test/midwife_catalog_data_test.dart"
+    status: "complete"
+  - chain_id: "TRACE-FR05-EMPTY-STATE"
+    requirement: "FR-05"
+    plan_phase: "Phase-2"
+    plan_item: "2.3"
+    tasks: ["T007"]
+    files:
+      - "lib/features/midwife_catalog/screens/midwife_catalog_screen.dart"
+      - "lib/features/midwife_catalog/screens/midwife_detail_screen.dart"
+      - "lib/features/booking/screens/booking_form_screen.dart"
+    status: "complete"
+  - chain_id: "TRACE-FR05-API"
+    requirement: "FR-05"
+    plan_phase: "Phase-1 and Phase-2"
+    plan_item: "1.1,2.1,2.2"
+    tasks: ["T001", "T002", "T003", "T004", "T006"]
+    files:
+      - "backend/app/Http/Middleware/RequirePatientRole.php"
+      - "backend/app/Services/FirebaseService.php"
+      - "backend/app/Http/Controllers/Api/MidwifeController.php"
+      - "backend/routes/api.php"
+      - "backend/tests/Feature/MidwifeCatalogEndpointTest.php"
+      - "lib/data/repositories/midwife_repository.dart"
+    status: "complete"
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "The catalog intentionally remains empty until API-backed providers and backend endpoints are implemented."
+  blocking_issues: []

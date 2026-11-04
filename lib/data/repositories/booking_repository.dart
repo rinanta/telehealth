@@ -101,6 +101,11 @@ class BookingRepository {
     required ConsultationSlot slot,
     required String complaint,
   }) async {
+    final amount = midwife.price;
+    if (amount == null) {
+      throw StateError('Harga konsultasi belum ditetapkan oleh server.');
+    }
+
     await Future.delayed(const Duration(milliseconds: 600));
 
     final bookingId = 'book_${_uuid.v4().substring(0, 8)}';
@@ -116,7 +121,7 @@ class BookingRepository {
       slotId: slot.id,
       slotStartAt: slot.startAt,
       complaint: complaint,
-      amount: midwife.price,
+      amount: amount,
       status: 'awaiting_payment',
       paymentId: paymentId,
       checkoutUrl: checkoutUrl,

@@ -13,8 +13,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _emailController = TextEditingController(text: 'pasien@telebunda.id');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -56,11 +56,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _fillPreset(String email) {
-    _emailController.text = email;
-    _passwordController.text = 'password123';
   }
 
   @override
@@ -180,65 +175,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: _handleLogin,
               ),
 
-              const SizedBox(height: 28),
-
-              // Preset Akun Demo untuk Pengujian Cepat
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.bolt_rounded,
-                          size: 18,
-                          color: AppColors.warning,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Preset Uji Demo Cepat',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _buildPresetTile(
-                      role: 'Pasien (Bunda Anisa)',
-                      email: 'pasien@telebunda.id',
-                      desc:
-                          'Akses penuh chat AI, katalog bidan, booking, dan hasil.',
-                      onTap: () => _fillPreset('pasien@telebunda.id'),
-                    ),
-                    const Divider(height: 16),
-                    _buildPresetTile(
-                      role: 'Bidan Terverifikasi (Bdn. Siti)',
-                      email: 'bidan.siti@telebunda.id',
-                      desc:
-                          'Akses dashboard bidan, terima booking, dan tulis hasil.',
-                      onTap: () => _fillPreset('bidan.siti@telebunda.id'),
-                    ),
-                    const Divider(height: 16),
-                    _buildPresetTile(
-                      role: 'Bidan Pending (Bdn. Novi)',
-                      email: 'bidan.novi@telebunda.id',
-                      desc:
-                          'Uji penolakan akses role ilegal/belum verified (FR-02).',
-                      onTap: () => _fillPreset('bidan.novi@telebunda.id'),
-                    ),
-                  ],
-                ),
-              ),
-
               const SizedBox(height: 20),
               Center(
                 child: TextButton(
@@ -262,64 +198,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPresetTile({
-    required String role,
-    required String email,
-    required String desc,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    role,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  Text(
-                    desc,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Text(
-                'Pilih',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

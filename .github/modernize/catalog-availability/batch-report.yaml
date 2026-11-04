@@ -1,0 +1,207 @@
+batch_id: "B01-catalog-api-and-static-data-removal"
+completed_tasks: ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009"]
+blocked_tasks: []
+required_endpoints:
+  - method: GET
+    path: /api/midwives
+    source: "PRD_TeleBunda_AI_MVP.md#9"
+    status: implemented
+  - method: GET
+    path: /api/midwives/{id}/slots
+    source: "PRD_TeleBunda_AI_MVP.md#9"
+    status: implemented
+files_changed:
+  T001:
+    - file: "backend/app/Http/Middleware/RequirePatientRole.php"
+      change_type: "created"
+      description: "Authorizes API access from the trusted patient role in Firestore."
+  T002:
+    - file: "backend/app/Services/FirebaseService.php"
+      change_type: "modified"
+      description: "Adds bounded Firestore queries and recursive document value decoding."
+  T003:
+    - file: "backend/app/Http/Controllers/Api/MidwifeController.php"
+      change_type: "created"
+      description: "Adds allowlisted catalog and available-slot responses."
+    - file: "backend/routes/api.php"
+      change_type: "modified"
+      description: "Registers both patient-only GET routes."
+  T004:
+    - file: "backend/tests/Feature/MidwifeCatalogEndpointTest.php"
+      change_type: "created"
+      description: "Covers auth, role, catalog allowlist, empty results, and slot validation."
+  T005:
+    - file: "lib/data/models/midwife_model.dart"
+      change_type: "modified"
+      description: "Removes fabricated defaults for fields absent from the API contract."
+  T006:
+    - file: "lib/data/repositories/midwife_repository.dart"
+      change_type: "modified"
+      description: "Uses authenticated API requests and async providers with no local fallback."
+  T007:
+    - file: "lib/features/midwife_catalog/screens/midwife_catalog_screen.dart"
+      change_type: "modified"
+      description: "Shows loading, empty, retry, and API error states."
+    - file: "lib/features/midwife_catalog/screens/midwife_detail_screen.dart"
+      change_type: "modified"
+      description: "Loads the backend profile and hides absent fields."
+    - file: "lib/features/booking/screens/booking_form_screen.dart"
+      change_type: "modified"
+      description: "Loads backend slots and removes simulated complaint/payment/booking behavior."
+    - file: "lib/data/repositories/booking_repository.dart"
+      change_type: "modified"
+      description: "Rejects a mock booking when server-owned price is absent."
+  T008:
+    - file: "test/midwife_catalog_data_test.dart"
+      change_type: "modified"
+      description: "Tests API-based parsing and absence of fabricated optional fields."
+    - file: "test/midwife_catalog_screen_test.dart"
+      change_type: "created"
+      description: "Tests catalog empty and retry/error states."
+  T009:
+    - file: "lib/data/repositories/midwife_repository.dart"
+      change_type: "modified"
+      description: "Removes hard-coded provider profiles and generated future slots."
+upstream_artifacts_consumed:
+  T001:
+    - artifact: "PRD_TeleBunda_AI_MVP.md#7-9"
+      used_for: "Trusted role-based access and read-only catalog contract."
+  T002:
+    - artifact: "PRD_TeleBunda_AI_MVP.md#8"
+      used_for: "Firestore midwives and slots field definitions."
+  T003:
+    - artifact: "PRD_TeleBunda_AI_MVP.md#9"
+      used_for: "GET catalog and slot endpoint paths."
+  T005:
+    - artifact: ".github/modernize/catalog-availability/plan.md"
+      used_for: "No frontend-generated defaults for data absent from the PRD."
+  T009:
+    - artifact: ".github/modernize/catalog-availability/plan.md"
+      used_for: "No local catalog/slot fixture fallback."
+evidence_mapping:
+  T001:
+    - upstream: "PRD_TeleBunda_AI_MVP.md#FR-05"
+      output: "backend/app/Http/Middleware/RequirePatientRole.php"
+      evidence: "MidwifeCatalogEndpointTest verifies non-patient access is forbidden."
+  T002:
+    - upstream: "PRD_TeleBunda_AI_MVP.md#8"
+      output: "backend/app/Services/FirebaseService.php"
+      evidence: "Feature tests verify eligible data and returned slot validation."
+  T003:
+    - upstream: "PRD_TeleBunda_AI_MVP.md#9"
+      output: "backend/routes/api.php"
+      evidence: "route:list and Laravel feature tests confirm both endpoints."
+  T006:
+    - upstream: "PRD_TeleBunda_AI_MVP.md#9"
+      output: "lib/data/repositories/midwife_repository.dart"
+      evidence: "Flutter test confirms the catalog is parsed from API response data."
+  T007:
+    - upstream: "PRD_TeleBunda_AI_MVP.md#FR-14"
+      output: "lib/features/midwife_catalog/screens/midwife_catalog_screen.dart"
+      evidence: "Widget tests cover empty and network-error retry states."
+traceability:
+  - requirement: "FR-05"
+    plan_item: "1.1"
+    task: "T001"
+    files: ["backend/app/Http/Middleware/RequirePatientRole.php"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "1.1"
+    task: "T002"
+    files: ["backend/app/Services/FirebaseService.php"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "2.1"
+    task: "T003"
+    files: ["backend/app/Http/Controllers/Api/MidwifeController.php", "backend/routes/api.php"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "2.1,2.4"
+    task: "T004"
+    files: ["backend/tests/Feature/MidwifeCatalogEndpointTest.php"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "2.2"
+    task: "T005"
+    files: ["lib/data/models/midwife_model.dart"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "2.2"
+    task: "T006"
+    files: ["lib/data/repositories/midwife_repository.dart"]
+    status: "completed"
+  - requirement: "FR-05; FR-14 (partial)"
+    plan_item: "2.3"
+    task: "T007"
+    files: ["lib/features/midwife_catalog/screens/midwife_catalog_screen.dart", "lib/features/midwife_catalog/screens/midwife_detail_screen.dart", "lib/features/booking/screens/booking_form_screen.dart"]
+    status: "completed"
+  - requirement: "FR-05; FR-14 (partial)"
+    plan_item: "2.4"
+    task: "T008"
+    files: ["test/midwife_catalog_data_test.dart", "test/midwife_catalog_screen_test.dart"]
+    status: "completed"
+  - requirement: "FR-05"
+    plan_item: "2.2"
+    task: "T009"
+    files: ["lib/data/repositories/midwife_repository.dart"]
+    status: "completed"
+protocol_violation: false
+errors: []
+warnings:
+  - "Firestore must contain eligible active verified midwives and available slots before the API can return catalog data."
+  - "FR-06 booking creation remains intentionally disabled until its backend endpoint is implemented."
+test_results:
+  T001:
+    command: "php artisan test"
+    passed: 13
+    failed: 0
+    skipped: 0
+    failures: []
+  T002:
+    command: "php artisan test"
+    passed: 13
+    failed: 0
+    skipped: 0
+    failures: []
+  T003:
+    command: "php artisan test; php artisan route:list --path=api/midwives"
+    passed: 13
+    failed: 0
+    skipped: 0
+    failures: []
+  T004:
+    command: "php artisan test"
+    passed: 13
+    failed: 0
+    skipped: 0
+    failures: []
+  T005:
+    command: "flutter tests"
+    passed: 17
+    failed: 0
+    skipped: 0
+    failures: []
+  T006:
+    command: "flutter tests; flutter analyze"
+    passed: 17
+    failed: 0
+    skipped: 0
+    failures: []
+  T007:
+    command: "flutter tests; flutter analyze; flutter build apk --debug"
+    passed: 17
+    failed: 0
+    skipped: 0
+    failures: []
+  T008:
+    command: "flutter tests; flutter analyze; flutter build apk --debug"
+    passed: 17
+    failed: 0
+    skipped: 0
+    failures: []
+  T009:
+    command: "flutter tests"
+    passed: 17
+    failed: 0
+    skipped: 0
+    failures: []

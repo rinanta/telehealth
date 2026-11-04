@@ -37,7 +37,7 @@ class FirebaseService
             ->acceptJson()
             ->timeout(15)
             ->post(
-                $this->usersCollectionUrl().'?documentId='.rawurlencode($uid),
+                $this->documentsUrl().'/users?documentId='.rawurlencode($uid),
                 ['fields' => $this->encodeFields($profile)],
             );
 
@@ -57,8 +57,9 @@ class FirebaseService
     {
         $response = Http::withToken($this->firestoreAccessToken())
             ->acceptJson()
+            ->connectTimeout(3)
             ->timeout(15)
-            ->get($this->usersCollectionUrl().'/'.rawurlencode($uid));
+            ->get($this->documentsUrl().'/users/'.rawurlencode($uid));
 
         if ($response->status() === 404) {
             return null;
@@ -67,6 +68,31 @@ class FirebaseService
         $response->throw();
 
         return $this->decodeFields($response->json('fields', []));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getActiveVerifiedMidwives(): array
+    {
+        return $this->runFirestoreQuery('midwives', [
+            ['field' => 'active', 'value' => ['booleanValue' => true]],
+            ['field' => 'verification_status', 'value' => ['stringValue' => 'verified']],
+        ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getAvailableSlots(string $midwifeId): array
+    {
+        return $this->runFirestoreQuery('slots', [
+            ['field' => 'midwife_id', 'value' => ['stringValue' => $midwifeId]],
+            ['field' => 'status', 'value' => ['stringValue' => 'available']],
+            ['field' => 'start_at', 'operator' => 'GREATER_THAN', 'value' => [
+                'timestampValue' => now()->toIso8601String(),
+            ]],
+        ]);
     }
 
     private function idTokenVerifier(): IdTokenVerifier
@@ -137,7 +163,68 @@ class FirebaseService
         return $accessToken;
     }
 
-    private function usersCollectionUrl(): string
+    /**
+     * @param  list<array{field: string, value: array<string, mixed>, operator?: string}>  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function runFirestoreQuery(string $collection, array $filters): array
+    {
+        $structuredFilters = array_map(
+            static fn (array $filter): array => [
+                'fieldFilter' => [
+                    'field' => ['fieldPath' => $filter['field']],
+                    'op' => $filter['operator'] ?? 'EQUAL',
+                    'value' => $filter['value'],
+                ],
+            ],
+            $filters,
+        );
+
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->post($this->documentsUrl().':runQuery', [
+                'structuredQuery' => [
+                    'from' => [['collectionId' => $collection]],
+                    'where' => [
+                        'compositeFilter' => [
+                            'op' => 'AND',
+                            'filters' => $structuredFilters,
+                        ],
+                    ],
+                    'limit' => 100,
+                ],
+            ]);
+
+        $response->throw();
+
+        $rows = $response->json();
+        if (! is_array($rows)) {
+            throw new RuntimeException('Firestore returned an invalid query response.');
+        }
+
+        $documents = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || ! is_array($row['document'] ?? null)) {
+                continue;
+            }
+
+            $document = $row['document'];
+            $fields = $this->decodeFields(is_array($document['fields'] ?? null) ? $document['fields'] : []);
+            $name = $document['name'] ?? null;
+
+            if (is_string($name)) {
+                $fields['id'] = basename($name);
+            }
+
+            $documents[] = $fields;
+        }
+
+        return $documents;
+    }
+
+    private function documentsUrl(): string
     {
         $projectId = $this->projectId();
 
@@ -146,7 +233,7 @@ class FirebaseService
         }
 
         return 'https://firestore.googleapis.com/v1/projects/'
-            .$projectId.'/databases/(default)/documents/users';
+            .$projectId.'/databases/(default)/documents';
     }
 
     /**
@@ -175,18 +262,44 @@ class FirebaseService
         $decoded = [];
 
         foreach ($fields as $name => $field) {
-            if (! is_array($field)) {
-                continue;
-            }
-
-            foreach (['stringValue', 'booleanValue', 'timestampValue', 'integerValue'] as $type) {
-                if (array_key_exists($type, $field)) {
-                    $decoded[$name] = $field[$type];
-                    break;
-                }
+            if (is_array($field)) {
+                $decoded[$name] = $this->decodeValue($field);
             }
         }
 
         return $decoded;
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     */
+    private function decodeValue(array $value): mixed
+    {
+        foreach ([
+            'stringValue',
+            'booleanValue',
+            'timestampValue',
+            'integerValue',
+            'doubleValue',
+            'nullValue',
+            'referenceValue',
+        ] as $type) {
+            if (array_key_exists($type, $value)) {
+                return $type === 'integerValue' ? (int) $value[$type] : $value[$type];
+            }
+        }
+
+        if (is_array($value['mapValue']['fields'] ?? null)) {
+            return $this->decodeFields($value['mapValue']['fields']);
+        }
+
+        if (is_array($value['arrayValue']['values'] ?? null)) {
+            return array_map(
+                fn (mixed $item): mixed => is_array($item) ? $this->decodeValue($item) : null,
+                $value['arrayValue']['values'],
+            );
+        }
+
+        return null;
     }
 }
