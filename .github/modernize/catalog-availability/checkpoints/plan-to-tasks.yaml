@@ -1,0 +1,87 @@
+metadata:
+  generated: "2026-11-04"
+  source_plan: ".github/modernize/catalog-availability/plan.md"
+  target_tasks: ".github/modernize/catalog-availability/plan.md#task-breakdown"
+
+summary:
+  total_plan_items: 5
+  covered_plan_items: 5
+  missing_plan_items: 0
+  coverage_percentage: 100.0
+  total_tasks_generated: 8
+  orphan_tasks: 0
+
+phases:
+  - phase_id: "Phase-1"
+    phase_name: "Foundational"
+    items:
+      - item_id: "1.1"
+        description: "Enforce patient access and define trusted Firestore reads"
+        tasks:
+          - task_id: "T001"
+            description: "Add patient-role middleware based on the trusted user profile"
+          - task_id: "T002"
+            description: "Add allowlisted Firestore catalog and slot queries with malformed-record logging"
+        notes: ""
+  - phase_id: "Phase-2"
+    phase_name: "Browse verified midwives and available slots"
+    items:
+      - item_id: "2.1"
+        description: "Expose the catalog and slot API"
+        tasks:
+          - task_id: "T003"
+            description: "Add patient-only catalog and slot API routes/controller"
+          - task_id: "T004"
+            description: "Cover endpoint authorization, filtering, and response contract"
+        notes: ""
+      - item_id: "2.2"
+        description: "Connect Flutter models and repository to the API"
+        tasks:
+          - task_id: "T005"
+            description: "Decode missing live-only profile fields without demo defaults"
+          - task_id: "T006"
+            description: "Add authenticated API providers and explicit demo behavior"
+        notes: ""
+      - item_id: "2.3"
+        description: "Render catalog and slot states without misleading live data"
+        tasks:
+          - task_id: "T007"
+            description: "Add async UI states and prevent live users entering demo booking flow"
+        notes: ""
+      - item_id: "2.4"
+        description: "Verify API and Flutter behavior"
+        tasks:
+          - task_id: "T008"
+            description: "Add focused Flutter tests and run analysis/build validation"
+        notes: ""
+
+missing_plan_items: []
+orphan_tasks: []
+
+upstream_trace:
+  - plan_item: "1.1"
+    source_requirements: ["FR-05"]
+    tasks: ["T001", "T002"]
+    full_trace: "FR-05 → Phase-1.1 → T001,T002"
+  - plan_item: "2.1"
+    source_requirements: ["FR-05"]
+    tasks: ["T003", "T004"]
+    full_trace: "FR-05 → Phase-2.1 → T003,T004"
+  - plan_item: "2.2"
+    source_requirements: ["FR-05"]
+    tasks: ["T005", "T006"]
+    full_trace: "FR-05 → Phase-2.2 → T005,T006"
+  - plan_item: "2.3"
+    source_requirements: ["FR-05", "FR-14 (partial)"]
+    tasks: ["T007"]
+    full_trace: "FR-05,FR-14 (partial) → Phase-2.3 → T007"
+  - plan_item: "2.4"
+    source_requirements: ["FR-05", "FR-14 (partial)"]
+    tasks: ["T004", "T008"]
+    full_trace: "FR-05,FR-14 (partial) → Phase-2.4 → T004,T008"
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "FR-14 task coverage is limited to catalog and slot UI states."

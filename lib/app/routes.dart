@@ -22,13 +22,13 @@ import '../features/midwife_dashboard/screens/midwife_history_screen.dart';
 import '../features/patient_dashboard/screens/patient_dashboard_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final user = ref.watch(authStateProvider);
-
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
+      final user = ref.read(authStateProvider);
       final path = state.uri.path;
-      final isPublicRoute = path == '/' || path == '/login' || path == '/register';
+      final isPublicRoute =
+          path == '/' || path == '/login' || path == '/register';
 
       // 1. Jika belum login dan mencoba masuk ke rute privat
       if (user == null && !isPublicRoute) {
@@ -36,7 +36,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // 2. Proteksi Role Bidan (FR-02 & FR-03)
-      final isMidwifeRoute = path.startsWith('/midwife-dashboard') ||
+      final isMidwifeRoute =
+          path.startsWith('/midwife-dashboard') ||
           path.startsWith('/midwife-booking-detail') ||
           path.startsWith('/midwife-result-form') ||
           path.startsWith('/midwife-history');
@@ -63,14 +64,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const SplashScreen(),
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -161,4 +156,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  ref.listen(authStateProvider, (previous, next) {
+    router.refresh();
+  });
+  ref.onDispose(router.dispose);
+
+  return router;
 });

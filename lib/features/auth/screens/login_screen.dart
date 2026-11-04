@@ -27,16 +27,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    ref.read(authRestoreErrorProvider.notifier).state = null;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final user = await ref.read(authStateProvider.notifier).login(
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
+      final user = await ref
+          .read(authStateProvider.notifier)
+          .login(_emailController.text.trim(), _passwordController.text);
 
       if (!mounted) return;
 
@@ -51,7 +51,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Gagal masuk. Periksa kembali email dan kata sandi Anda.';
+        _errorMessage = describeAuthError(e);
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -65,11 +65,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleError = _errorMessage ?? ref.watch(authRestoreErrorProvider);
+
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Masuk ke TeleBunda'),
-      ),
+      appBar: AppBar(title: const Text('Masuk ke TeleBunda')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -106,7 +106,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   hintText: 'nama@email.com',
-                  prefixIcon: Icon(Icons.email_outlined, color: AppColors.textSecondary),
+                  prefixIcon: Icon(
+                    Icons.email_outlined,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -122,10 +125,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   hintText: 'Masukkan kata sandi',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary),
+                  prefixIcon: const Icon(
+                    Icons.lock_outline_rounded,
+                    color: AppColors.textSecondary,
+                  ),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                       color: AppColors.textSecondary,
                     ),
                     onPressed: () {
@@ -135,7 +143,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
 
-              if (_errorMessage != null) ...[
+              if (visibleError != null) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(10),
@@ -145,12 +153,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 18, color: AppColors.danger),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 18,
+                        color: AppColors.danger,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                          visibleError,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.danger,
+                          ),
                         ),
                       ),
                     ],
@@ -180,7 +195,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.bolt_rounded, size: 18, color: AppColors.warning),
+                        Icon(
+                          Icons.bolt_rounded,
+                          size: 18,
+                          color: AppColors.warning,
+                        ),
                         SizedBox(width: 6),
                         Text(
                           'Preset Uji Demo Cepat',
@@ -196,21 +215,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     _buildPresetTile(
                       role: 'Pasien (Bunda Anisa)',
                       email: 'pasien@telebunda.id',
-                      desc: 'Akses penuh chat AI, katalog bidan, booking, dan hasil.',
+                      desc:
+                          'Akses penuh chat AI, katalog bidan, booking, dan hasil.',
                       onTap: () => _fillPreset('pasien@telebunda.id'),
                     ),
                     const Divider(height: 16),
                     _buildPresetTile(
                       role: 'Bidan Terverifikasi (Bdn. Siti)',
                       email: 'bidan.siti@telebunda.id',
-                      desc: 'Akses dashboard bidan, terima booking, dan tulis hasil.',
+                      desc:
+                          'Akses dashboard bidan, terima booking, dan tulis hasil.',
                       onTap: () => _fillPreset('bidan.siti@telebunda.id'),
                     ),
                     const Divider(height: 16),
                     _buildPresetTile(
                       role: 'Bidan Pending (Bdn. Novi)',
                       email: 'bidan.novi@telebunda.id',
-                      desc: 'Uji penolakan akses role ilegal/belum verified (FR-02).',
+                      desc:
+                          'Uji penolakan akses role ilegal/belum verified (FR-02).',
                       onTap: () => _fillPreset('bidan.novi@telebunda.id'),
                     ),
                   ],

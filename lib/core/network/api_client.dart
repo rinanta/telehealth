@@ -5,30 +5,34 @@ import 'api_endpoints.dart';
 class ApiClient {
   final Dio dio;
   String? _authToken;
+  Future<String?> Function()? _tokenProvider;
 
   ApiClient({Dio? customDio})
-      : dio = customDio ??
-            Dio(
-              BaseOptions(
-                baseUrl: ApiEndpoints.baseUrl,
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 15),
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                },
-              ),
-            ) {
+    : dio =
+          customDio ??
+          Dio(
+            BaseOptions(
+              baseUrl: ApiEndpoints.baseUrl,
+              connectTimeout: const Duration(seconds: 15),
+              receiveTimeout: const Duration(seconds: 15),
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+            ),
+          ) {
     dio.interceptors.add(
       InterceptorsWrapper(
-        onRequest: (options, handler) {
-          if (_authToken != null) {
-            options.headers['Authorization'] = 'Bearer $_authToken';
+        onRequest: (options, handler) async {
+          final token = await _tokenProvider?.call() ?? _authToken;
+          if (token != null) {
+            options.headers['Authorization'] = 'Bearer $token';
+          } else {
+            options.headers.remove('Authorization');
           }
           return handler.next(options);
         },
         onError: (DioException error, handler) {
-          // Log error respons standar
           return handler.next(error);
         },
       ),
@@ -37,6 +41,10 @@ class ApiClient {
 
   void setAuthToken(String? token) {
     _authToken = token;
+  }
+
+  void setTokenProvider(Future<String?> Function()? provider) {
+    _tokenProvider = provider;
   }
 
   Future<Response> get(String path, {Map<String, dynamic>? queryParameters}) {

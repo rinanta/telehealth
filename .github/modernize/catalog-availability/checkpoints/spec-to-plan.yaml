@@ -1,0 +1,52 @@
+metadata:
+  generated: "2026-11-04"
+  source_spec: "PRD_TeleBunda_AI_MVP.md (FR-05; partial FR-14)"
+  target_plan: ".github/modernize/catalog-availability/plan.md"
+
+summary:
+  total_requirements: 2
+  covered_requirements: 2
+  missing_requirements: 0
+  coverage_percentage: 100.0
+
+requirements:
+  - req_id: "FR-05"
+    req_description: "Daftar bidan dan jadwal hanya menampilkan slot valid yang tersedia"
+    priority: "P1"
+    plan_mapping:
+      phase: "Phase-1 and Phase-2"
+      phase_name: "Foundational and Browse verified midwives and available slots"
+      items:
+        - item_id: "1.1"
+          description: "Enforce patient access and define trusted Firestore reads"
+        - item_id: "2.1"
+          description: "Expose the catalog and slot API"
+        - item_id: "2.2"
+          description: "Connect Flutter models and repository to the API"
+        - item_id: "2.3"
+          description: "Render catalog and slot states without misleading live data"
+        - item_id: "2.4"
+          description: "Verify API and Flutter behavior"
+    notes: "Scope is limited to the FR-05 feature slice."
+  - req_id: "FR-14 (partial)"
+    req_description: "Katalog/slot memperlihatkan loading, kosong, dan gagal jaringan"
+    priority: "P1"
+    plan_mapping:
+      phase: "Phase-2"
+      phase_name: "Browse verified midwives and available slots"
+      items:
+        - item_id: "2.3"
+          description: "Render catalog and slot states without misleading live data"
+        - item_id: "2.4"
+          description: "Verify API and Flutter behavior"
+    notes: "Payment, pending, failure, and no-show states are outside this plan."
+
+missing_requirements: []
+orphan_plan_items: []
+
+validation:
+  passed: true
+  errors: []
+  warnings:
+    - "FR-14 is covered only for catalog and slot loading, empty, and network-error states."
+    - "Other PRD requirements are outside this feature-slice plan."

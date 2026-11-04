@@ -8,7 +8,7 @@ Aplikasi telehealth edukasi kehamilan dan konsultasi chat bidan | MVP Android
 | ----------------- | ------------------------------------------------------------------------------------------------- |
 | Versi             | 1.0 - baseline pengembangan                                                                       |
 | Tanggal           | 2 November 2026                                                                                   |
-| Status            | Draft PRD untuk implementasi dan persetujuan tim                                                  |
+| Status            | Disetujui sebagai baseline perencanaan dan implementasi MVP                                      |
 | Platform          | Satu APK Flutter untuk pasien dan bidan                                                           |
 | Stack             | Flutter (Dart) \| Laravel (PHP) \| Firebase Auth + Cloud Firestore \| Gemini API \| Mayar Sandbox |
 | Tim               | Fida: PM, UI/UX, QA, dokumentasi; Rinanta: frontend Flutter; Iqbal: Laravel, Firebase, AI, Mayar  |
@@ -32,9 +32,9 @@ TeleBunda AI membantu pasien mendapatkan informasi awal seputar kehamilan melalu
 | ----------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | Pasien                  | Daftar mandiri; memilih "Pasien" pada UI                                                         | Chat AI, cari bidan, booking, bayar sandbox, chat sesi sendiri, lihat hasil sendiri           |
 | Bidan                   | Dapat memilih "Bidan" pada UI, tetapi akses hanya jika akun sudah diverifikasi/admin-provisioned | Lihat booking yang ditujukan kepadanya, konfirmasi, mulai sesi, chat, tulis hasil, selesaikan |
-| Admin teknis (tanpa UI) | Firebase Console / skrip Laravel admin untuk demo                                                | Verifikasi akun bidan, seeding jadwal dan pemulihan data uji                                  |
+| Admin teknis (tanpa UI) | Proses admin terbatas melalui Firebase Console atau skrip/command Laravel yang hanya dijalankan server | Verifikasi akun bidan, seeding jadwal dan pemulihan data uji; tidak tersedia sebagai registrasi mandiri |
 
-Catatan keamanan: layar pilihan role pada registrasi/login boleh tersedia sesuai permintaan UI, tetapi memilih "Bidan" tidak pernah otomatis menaikkan role. Pendaftaran bidan menghasilkan permohonan/akun pending_verification; hanya akun bidan yang diberi otorisasi admin dapat mengakses dashboard bidan. Pada login, backend memeriksa role tepercaya dan mengarahkan pengguna secara otomatis.
+Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan dengan status pending_verification; pilihan itu tidak memberikan kewenangan bidan. Role dan status verifikasi ditetapkan/diubah server, dan hanya bidan yang disetujui admin dapat memakai fitur bidan. Login memuat role tepercaya dari backend dan mengarahkan pengguna otomatis. Pilihan role saat login, jika tetap ditampilkan, hanya preferensi tampilan dan tidak digunakan untuk otorisasi.
 
 # 4. Alur Bisnis End-to-End
 
@@ -66,13 +66,13 @@ Catatan keamanan: layar pilihan role pada registrasi/login boleh tersedia sesuai
 
 | Objek                   | Status / aturan                                                                                                                             |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Booking                 | awaiting_payment -> paid_pending_midwife -> confirmed -> active -> completed; cabang: payment_failed, expired, rejected, cancelled, no_show |
+| Booking                 | Alur normal: awaiting_payment -> paid_pending_midwife -> confirmed -> active -> completed. Alur akhir/pengecualian: awaiting_payment -> payment_failed / expired / cancelled; paid_pending_midwife -> rejected; confirmed -> no_show. Setiap transisi divalidasi backend. |
 | Pembayaran              | created / pending / paid / failed / expired / refunded_test (jika didukung skenario sandbox); paid hanya dari verifikasi server             |
-| Slot                    | Tahan selama 15 menit (asumsi desain, configurable); dilepas saat pembayaran gagal/kedaluwarsa                                              |
-| Konsultasi              | Sesi normal 30 menit; started_at dan ends_at dari backend; hanya 1 sesi aktif per booking                                                   |
-| Keterlambatan           | Toleransi 10 menit (asumsi desain), dengan penjadwalan ulang/manual handling jika bidan tidak hadir                                         |
-| Timer                   | Notifikasi 5 menit tersisa; ketika 30 menit tercapai input pesan ditutup untuk sesi normal, bidan tetap bisa menyimpan hasil                |
-| Chat                    | Hanya peserta booking paid+confirmed+active yang boleh kirim; setelah completed hanya baca                                                  |
+| Slot                    | Ditahan 15 menit sejak booking dibuat; dilepas saat pembayaran gagal atau hold kedaluwarsa. Lama hold dapat dikonfigurasi server. Pembayaran yang terverifikasi setelah hold dilepas harus direkonsiliasi dan tidak otomatis mengambil slot kembali. |
+| Konsultasi              | Sesi normal 30 menit; started_at dan ends_at ditetapkan backend; hanya 1 sesi aktif per booking. |
+| Keterlambatan           | Toleransi 10 menit adalah jendela bidan untuk memulai sesi dari waktu jadwal; setelah itu tandai no_show dan lakukan penanganan/penjadwalan ulang manual. Toleransi tidak memperpanjang durasi sesi. |
+| Timer                   | Notifikasi pada 5 menit tersisa. Saat ends_at tercapai, backend menolak pesan baru; sesi tetap perlu difinalisasi bidan dengan hasil konsultasi. |
+| Chat                    | Hanya peserta booking paid+confirmed+active yang boleh mengirim pesan sebelum ends_at; setelah completed hanya baca. Pada akhir timer, pengiriman pesan dikunci meskipun bidan belum menyimpan hasil. |
 | Hasil                   | Bidan wajib mengisi ringkasan dan tindak lanjut sebelum finalisasi; anjuran suplemen opsional                                               |
 | Penolakan setelah bayar | Tidak boleh menghilangkan transaksi; lakukan pengaturan jadwal ulang/refund sesuai dukungan Mayar dan kebijakan yang ditentukan             |
 
@@ -97,6 +97,18 @@ Catatan keamanan: layar pilihan role pada registrasi/login boleh tersedia sesuai
 
 # 7. Arsitektur Teknis
 
+**Keputusan teknis implementasi MVP (disepakati tim):**
+
+- **Autentikasi dan role:** Flutter membuat akun/melakukan login melalui Firebase Authentication. Setiap permintaan API mengirim `Authorization: Bearer <Firebase ID token>`; Laravel memverifikasi token dan membaca profil serta role tepercaya dari Firestore. Endpoint registrasi menerima pasien atau permohonan bidan; backend menetapkan role/status yang diizinkan dan tidak menerima `verified` atau role istimewa dari klien. Hanya proses admin tepercaya yang dapat memverifikasi bidan.
+- **Hold dan pembayaran terlambat:** gunakan hold 15 menit seperti Bagian 5. Jika belum ada pembayaran terverifikasi saat hold habis, tandai booking expired dan lepaskan slot. Jika notifikasi pembayaran valid tiba setelah slot dilepas/booking expired, jangan mengambil slot yang mungkin sudah dipesan orang lain; tandai untuk rekonsiliasi dan penanganan manual/refund sandbox sesuai dukungan Mayar. Webhook diproses idempoten.
+- **Penolakan dan no-show setelah pembayaran:** utamakan penjadwalan ulang yang disetujui pasien. Jika tidak dapat dijadwalkan ulang, catat kasus untuk bantuan/refund sandbox secara manual, bergantung pada kemampuan provider; MVP tidak menjanjikan refund otomatis sebelum kemampuan Mayar dikonfirmasi. Tidak ada pembayaran uang sungguhan pada MVP.
+- **Waktu sesi:** bidan hanya dapat memulai pada/setelah waktu slot dan paling lambat 10 menit sesudahnya. Backend menetapkan `started_at` dan `ends_at = started_at + 30 menit`; waktu perangkat hanya untuk tampilan countdown. Setelah `ends_at`, backend menolak pesan baru, tetapi bidan tetap dapat menyimpan hasil untuk menutup sesi.
+- **Chat realtime dan otorisasi:** rekomendasi MVP adalah Laravel memvalidasi setiap pesan (identitas peserta, booking berstatus active, dan waktu sebelum `ends_at`) lalu menulis ke Firestore melalui Admin SDK; Flutter menerima pesan realtime dengan listener Firestore. Security Rules mengizinkan pembacaan hanya untuk pasien/bidan yang tercatat sebagai peserta sesi dan menolak penulisan langsung dari klien. Riwayat pesan tetap dapat dibaca peserta setelah sesi selesai.
+- **Privasi chat AI:** jangan menyimpan isi percakapan AI ke Firestore atau log server pada MVP; tampilkan percakapan hanya selama sesi aplikasi berjalan. Jangan mencatat teks keluhan/chat dalam log operasional. Retensi riwayat konsultasi bidan mengikuti kebutuhan hasil konsultasi dan akses terbatas sesuai role.
+- **Sumber kebenaran status:** UI tidak boleh mengubah status pembayaran, booking, verifikasi, timer, ataupun kelayakan chat. Perubahan tersebut hanya berasal dari endpoint/backend atau webhook terverifikasi.
+
+Keputusan pada bagian ini menjadi baseline implementasi MVP. Untuk chat realtime, pesan ditulis melalui Laravel dan dibaca realtime dari Firestore; penulisan langsung dari klien bukan jalur implementasi MVP.
+
 Flutter (Android) -> Laravel REST API (otorisasi, aturan bisnis, Gemini, Mayar) -> Firebase Admin SDK/Firestore. Firebase Authentication melakukan autentikasi pengguna; Flutter mengirim Firebase ID token melalui Authorization: Bearer ke Laravel. Laravel memverifikasi token dan role tepercaya. Firestore menjadi sumber data utama untuk user, booking, slot, chat, hasil konsultasi dan transaksi. Untuk chat real-time, Flutter dapat memakai Firestore listener langsung dengan Security Rules ketat; tulis pesan hanya untuk peserta sesi aktif sesuai status yang dikendalikan Laravel, atau gunakan API Laravel untuk penulisan jika aturan keamanan lebih mudah dikontrol demikian.
 
 Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Composer, Firebase Admin SDK untuk PHP yang kompatibel, kredensial service account server, dan endpoint HTTPS yang dapat diakses webhook Mayar. Jangan memasukkan service account, API key Gemini, ataupun Mayar secret ke APK atau Git.
@@ -113,7 +125,7 @@ Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Compos
 | consultations/{consultationId}          | booking_id, patient_id, midwife_id, started_at, ends_at, status, completed_at                   |
 | consultations/{id}/messages/{messageId} | sender_id, text, sent_at, type=text                                                             |
 | consultation_results/{id}               | consultation_id, summary, advice, supplement_note_optional, follow_up, saved_by, completed_at   |
-| ai_chats/{uid}/messages/{messageId}     | role, content, created_at; optional, configurable retention                                     |
+| ai_chats/{uid}/messages/{messageId}     | Tidak dibuat/disimpan pada MVP; percakapan AI hanya sementara di aplikasi                       |
 
 Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date; slots by midwife/date/status; messages by sent_at. Gunakan timestamp UTC di database dan tampilkan WIB pada antarmuka.
 
@@ -121,7 +133,7 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 
 | Method / Endpoint                     | Akses / Tindakan                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------- |
-| POST /api/auth/register               | Pasien; membuat profil akun setelah Firebase Auth                       |
+| POST /api/auth/register               | Pengguna terautentikasi Firebase; membuat profil pasien atau permohonan bidan pending. Backend memvalidasi jenis pendaftaran dan menetapkan role/status yang diizinkan. |
 | GET /api/me                           | Semua; role dan profil                                                  |
 | GET /api/midwives                     | Pasien; daftar bidan aktif                                              |
 | GET /api/midwives/{id}/slots          | Pasien; slot tersedia                                                   |
@@ -133,11 +145,12 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | POST /api/bookings/{id}/reject        | Bidan; alasan dan penanganan lanjutan                                   |
 | POST /api/consultations/{id}/start    | Bidan; mulai sesi sesuai jadwal                                         |
 | GET /api/consultations/{id}           | Peserta; status dan timer                                               |
+| POST /api/consultations/{id}/messages | Peserta; backend memvalidasi sesi aktif dan waktu, lalu menulis pesan    |
 | POST /api/consultations/{id}/complete | Bidan; simpan hasil + complete                                          |
 | POST /api/ai/chat                     | Pasien; Laravel meneruskan permintaan ke Gemini                         |
 | GET /api/history                      | Pasien/bidan; hasil dan riwayat yang diizinkan                          |
 
-Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response dan status harus disalin dari dokumentasi Mayar sesuai versi API yang dipilih sebelum coding; tabel ini hanya kontrak API internal Laravel.
+Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response dan status harus disalin dari dokumentasi Mayar sesuai versi API yang dipilih sebelum coding; tabel ini hanya kontrak API internal Laravel. Endpoint checkout dan seluruh endpoint bisnis memerlukan autentikasi Firebase, kecuali webhook Mayar yang memerlukan verifikasi provider. Setiap endpoint memeriksa kepemilikan/role di backend, bukan hanya di UI.
 
 # 10. Daftar Layar dan Navigasi
 
@@ -163,17 +176,17 @@ Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response 
 
 | Tahap                        | Pekerjaan inti                                                                                       | Output / syarat lanjut                                  |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| 0\. Finalisasi               | Setujui flow, role, 30 menit, status pembayaran dan batas fitur; buat repo & issue board             | PRD disetujui, backlog dibagi                           |
-| 1\. Desain                   | Fida: wireframe dan Figma/Stitch 15 layar, design system, state gagal/loading                        | Navigasi bisa diuji sebagai prototype                   |
-| 2\. Infrastruktur            | Rinanta: Flutter project; Iqbal: Laravel project, Firebase project/Auth/Firestore; setup environment | Flutter bisa mengakses /api/health di Laravel           |
-| 3\. Auth & role              | Register pasien, login, token Firebase, middleware Laravel, seed bidan verified                      | Dua akun masuk dashboard berbeda; penolakan role ilegal |
-| 4\. Data bidan & slot        | Profil bidan, slot dan kalender; frontend list/detail/booking form                                   | Pasien melihat slot valid dari backend                  |
-| 5\. Booking tanpa bayar      | Hold slot, catat keluhan, status pending, cegah double-book                                          | Booking berhasil dan tidak duplikat                     |
-| 6\. Chat AI                  | Endpoint Gemini Laravel, prompt aman, limit input/rate, UI chat                                      | AI menjawab dan fallback saat error                     |
-| 7\. Konsultasi tanpa payment | Konfirmasi booking dummy paid dalam lingkungan DEV saja; start sesi, chat realtime, timer, hasil     | Demo pasien-bidan end-to-end dengan status dev          |
-| 8\. Mayar Sandbox            | Checkout API, deep link/webview/browser, callback HTTPS, validasi webhook, status paid               | Transaksi sandbox tervalidasi memicu booking paid       |
-| 9\. Integrasi final          | Hapus bypass paid DEV, hubungkan pembayaran ke booking dan konsultasi                                | Konsultasi hanya aktif setelah paid+confirmed           |
-| 10\. QA & demo               | Uji dua perangkat, jaringan buruk, timer, role, duplikat, payment failure, laporan                   | APK release demo, skenario rekaman dan bukti test       |
+| 0\. Persiapan kerja          | Buat backlog/issue dari PRD yang disetujui, tetapkan pemilik dan urutan dependensi                 | Tugas awal jelas dan dapat dikerjakan paralel tanpa mengubah kontrak yang disepakati |
+| 1\. Desain                   | Fida: wireframe dan Figma/Stitch 15 layar, design system, state gagal/loading                        | Navigasi dan state UI dapat diuji sebagai prototype    |
+| 2\. Infrastruktur            | Rinanta: Flutter; Iqbal: Laravel, Firebase Auth/Firestore; siapkan environment                        | Flutter dapat memanggil `/api/health` Laravel dari perangkat demo |
+| 3\. Auth & role              | Register/login Firebase, verifikasi token Laravel, profil/role, status bidan, seed akun demo         | Pasien dan bidan terverifikasi masuk sesuai role; akses ilegal ditolak API |
+| 4\. Data bidan & slot        | Profil bidan, slot dan kalender dari Firestore/backend; sambungkan UI                                 | Slot yang tampil berasal dari backend dan sudah difilter valid/tersedia |
+| 5\. Booking tanpa bayar      | Hold slot atomik, expiry, transisi booking dan proteksi double-book                                   | Dua permintaan bersamaan pada slot sama hanya menghasilkan satu hold |
+| 6\. Chat AI                  | Endpoint Gemini Laravel, prompt keselamatan, validasi/rate limit, tanpa penyimpanan chat MVP         | Jawaban edukasi, eskalasi red flag, dan state error provider teruji |
+| 7\. Konsultasi DEV           | Bypass paid hanya di environment DEV; start sesi, chat realtime, batas waktu server, hasil           | Demo pasien-bidan end-to-end; bypass tidak tersedia di staging/production |
+| 8\. Mayar Sandbox            | Checkout API, redirect, callback HTTPS, validasi webhook dan idempotensi                             | Pembayaran sandbox valid mengubah status sekali; callback ulang/terlambat ditangani |
+| 9\. Integrasi final          | Hapus bypass paid DEV dan verifikasi akses per status/role                                            | Sesi hanya dimulai dari booking paid+confirmed          |
+| 10\. QA & demo               | Uji dua perangkat, jaringan buruk, timer, role, slot ganda, status pembayaran/no-show                | UAT Bagian 13 lulus; APK demo dan bukti pengujian tersedia |
 
 # 12. Pembagian Tanggung Jawab dan Handoff
 
@@ -187,13 +200,16 @@ Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response 
 
 - Pasien bisa daftar/login; bidan hanya berhasil jika verified; akun pasien tidak bisa mengakses endpoint bidan.
 - Pemilihan slot yang sama oleh dua pasien hanya menghasilkan satu booking yang valid.
+- Hold yang kedaluwarsa melepaskan slot; pembayaran valid yang datang terlambat tidak merebut kembali slot dan masuk rekonsiliasi.
 - Booking unpaid tidak muncul sebagai sesi yang dapat dimulai; pembayaran pending/gagal tidak membuka chat.
 - Mayar sandbox sukses setelah webhook valid mengubah status sekali, bahkan jika webhook berulang.
 - Bidan mengonfirmasi booking; pasien memperoleh status confirmed dan jadwal.
 - Dua perangkat saling menerima pesan; pengguna ketiga tidak dapat membaca pesan orang lain.
-- Timer 30 menit konsisten setelah HP dimatikan/di-refresh; setelah selesai pesan terkunci.
+- Penulisan langsung ke Firestore oleh klien ditolak; API menolak pesan dari non-peserta atau setelah ends_at.
+- Timer 30 menit konsisten setelah HP dimatikan/di-refresh; pesan terkunci setelah ends_at sementara bidan tetap dapat menyimpan hasil.
 - Hasil konsultasi tidak dapat diisi AI atau pasien, hanya bidan terkait.
 - Gemini tidak boleh menampilkan diagnosis pasti; untuk tanda bahaya tampilkan arahan pertolongan segera.
+- Isi chat AI tidak tersimpan di Firestore maupun log server.
 - Aplikasi tetap memberi pesan kesalahan yang jelas saat koneksi/API provider gagal.
 
 # 14. Risiko, Asumsi, dan Ketergantungan

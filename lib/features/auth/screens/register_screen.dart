@@ -48,28 +48,40 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+    ref.read(authRestoreErrorProvider.notifier).state = null;
 
     try {
       if (_selectedTab == 0) {
         // Daftar Pasien
-        await ref.read(authStateProvider.notifier).registerPatient(
+        await ref
+            .read(authStateProvider.notifier)
+            .registerPatient(
               _nameController.text.trim(),
               _emailController.text.trim(),
               _passwordController.text,
             );
         if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pendaftaran berhasil. Anda sudah masuk.'),
+          ),
+        );
         context.go('/patient-dashboard');
       } else {
         // Pengajuan Akun Bidan
-        if (_credentialController.text.trim().isEmpty || _strController.text.trim().isEmpty) {
+        if (_credentialController.text.trim().isEmpty ||
+            _strController.text.trim().isEmpty) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Gelar kebidanan dan nomor STR wajib diisi untuk verifikasi.';
+            _errorMessage =
+                'Gelar kebidanan dan nomor STR wajib diisi untuk verifikasi.';
           });
           return;
         }
 
-        await ref.read(authStateProvider.notifier).registerMidwife(
+        await ref
+            .read(authStateProvider.notifier)
+            .registerMidwife(
               name: _nameController.text.trim(),
               email: _emailController.text.trim(),
               password: _passwordController.text,
@@ -78,10 +90,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             );
 
         if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Permohonan berhasil dikirim. Akun menunggu verifikasi admin.',
+            ),
+          ),
+        );
         context.go('/midwife-pending');
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Pendaftaran gagal. Silakan coba lagi.');
+      setState(() => _errorMessage = describeAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -91,9 +110,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Daftar Akun'),
-      ),
+      appBar: AppBar(title: const Text('Daftar Akun')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -116,15 +133,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: _selectedTab == 0 ? Colors.white : Colors.transparent,
+                            color: _selectedTab == 0
+                                ? Colors.white
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: _selectedTab == 0
                                 ? [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.05),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.05,
+                                      ),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
-                                    )
+                                    ),
                                   ]
                                 : null,
                           ),
@@ -134,7 +155,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: _selectedTab == 0 ? AppColors.primary : AppColors.textSecondary,
+                              color: _selectedTab == 0
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -147,15 +170,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: _selectedTab == 1 ? Colors.white : Colors.transparent,
+                            color: _selectedTab == 1
+                                ? Colors.white
+                                : Colors.transparent,
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: _selectedTab == 1
                                 ? [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.05),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.05,
+                                      ),
                                       blurRadius: 4,
                                       offset: const Offset(0, 2),
-                                    )
+                                    ),
                                   ]
                                 : null,
                           ),
@@ -165,7 +192,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: _selectedTab == 1 ? AppColors.secondary : AppColors.textSecondary,
+                              color: _selectedTab == 1
+                                  ? AppColors.secondary
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ),
@@ -192,7 +221,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       Expanded(
                         child: Text(
                           'Pendaftaran Bidan memerlukan verifikasi keaslian STR oleh tim administrasi medis sebelum dapat membuka praktik.',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF1E3A8A)),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF1E3A8A),
+                          ),
                         ),
                       ),
                     ],
@@ -201,79 +233,120 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
               // Form Nama Lengkap
               Text(
-                _selectedTab == 0 ? 'Nama Lengkap Ibu' : 'Nama Lengkap & Gelar Bidan',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                _selectedTab == 0
+                    ? 'Nama Lengkap Ibu'
+                    : 'Nama Lengkap & Gelar Bidan',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _nameController,
                 decoration: InputDecoration(
-                  hintText: _selectedTab == 0 ? 'Contoh: Bunda Anisa Lestari' : 'Contoh: Bdn. Siti Rahmawati, S.Tr.Keb',
-                  prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary),
+                  hintText: _selectedTab == 0
+                      ? 'Contoh: Bunda Anisa Lestari'
+                      : 'Contoh: Bdn. Siti Rahmawati, S.Tr.Keb',
+                  prefixIcon: const Icon(
+                    Icons.person_outline_rounded,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
 
               // Form Email
-              const Text('Email Aktif', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const Text(
+                'Email Aktif',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   hintText: 'nama@email.com',
-                  prefixIcon: Icon(Icons.email_outlined, color: AppColors.textSecondary),
+                  prefixIcon: Icon(
+                    Icons.email_outlined,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
 
               // Kolom Tambahan Jika Bidan
               if (_selectedTab == 1) ...[
-                const Text('Gelar & Kredensial', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const Text(
+                  'Gelar & Kredensial',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _credentialController,
                   decoration: const InputDecoration(
                     hintText: 'Contoh: Bidan Praktik Mandiri • Spesialis ANC',
-                    prefixIcon: Icon(Icons.badge_outlined, color: AppColors.textSecondary),
+                    prefixIcon: Icon(
+                      Icons.badge_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                const Text('Nomor Registrasi Bidan (STR Aktif)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const Text(
+                  'Nomor Registrasi Bidan (STR Aktif)',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _strController,
                   decoration: const InputDecoration(
                     hintText: 'STR-BDN-XXXX-XXXX',
-                    prefixIcon: Icon(Icons.verified_outlined, color: AppColors.textSecondary),
+                    prefixIcon: Icon(
+                      Icons.verified_outlined,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
               ],
 
               // Kata Sandi
-              const Text('Kata Sandi', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const Text(
+                'Kata Sandi',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: _passwordController,
                 obscureText: true,
                 decoration: const InputDecoration(
                   hintText: 'Minimal 8 karakter',
-                  prefixIcon: Icon(Icons.lock_outline_rounded, color: AppColors.textSecondary),
+                  prefixIcon: Icon(
+                    Icons.lock_outline_rounded,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
 
               if (_errorMessage != null) ...[
                 const SizedBox(height: 12),
-                Text(_errorMessage!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                ),
               ],
 
               const SizedBox(height: 24),
               AppButton(
-                label: _selectedTab == 0 ? 'Daftar sebagai Pasien' : 'Kirim Pengajuan Kemitraan Bidan',
+                label: _selectedTab == 0
+                    ? 'Daftar sebagai Pasien'
+                    : 'Kirim Pengajuan Kemitraan Bidan',
                 isLoading: _isLoading,
-                backgroundColor: _selectedTab == 0 ? AppColors.primary : AppColors.secondary,
+                backgroundColor: _selectedTab == 0
+                    ? AppColors.primary
+                    : AppColors.secondary,
                 onPressed: _handleRegister,
               ),
 

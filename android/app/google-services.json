@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "767022602639",
+    "project_id": "telebunda-ai",
+    "storage_bucket": "telebunda-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:767022602639:android:517ac6233d4a710baa53fa",
+        "android_client_info": {
+          "package_name": "com.telebunda.ai.telebunda_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCov_aGOwgWitAzGq04LniynlNLNKbt-Wc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
