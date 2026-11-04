@@ -3,9 +3,11 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ConsultationChatController;
+use App\Http\Controllers\Api\ConsultationResultController;
 use App\Http\Controllers\Api\MidtransWebhookController;
 use App\Http\Controllers\Api\MidwifeBookingController;
 use App\Http\Controllers\Api\MidwifeController;
+use App\Http\Controllers\Api\PatientHistoryController;
 use App\Http\Middleware\RequireMidwifeRole;
 use App\Http\Middleware\RequirePatientRole;
 use App\Http\Middleware\VerifyFirebaseIdToken;
@@ -27,6 +29,7 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::middleware(RequirePatientRole::class)->group(function (): void {
         Route::get('/midwives', [MidwifeController::class, 'index'])->name('midwives.index');
         Route::get('/midwives/{id}/slots', [MidwifeController::class, 'slots'])->name('midwives.slots');
+        Route::get('/history', [PatientHistoryController::class, 'index'])->name('history.index');
         Route::get('/bookings/{id}', [BookingController::class, 'show'])->name('bookings.show');
         Route::post('/bookings', [BookingController::class, 'store'])
             ->middleware('throttle:10,1')
@@ -48,10 +51,14 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
             ->name('midwife.bookings.reject');
         Route::post('/bookings/{id}/start', [MidwifeBookingController::class, 'start'])
             ->name('midwife.bookings.start');
+        Route::post('/bookings/{id}/complete', [MidwifeBookingController::class, 'complete'])
+            ->name('midwife.bookings.complete');
     });
 
     Route::get('/bookings/{id}/messages', [ConsultationChatController::class, 'index'])
         ->name('bookings.messages.index');
     Route::post('/bookings/{id}/messages', [ConsultationChatController::class, 'store'])
         ->name('bookings.messages.store');
+    Route::get('/bookings/{id}/result', [ConsultationResultController::class, 'show'])
+        ->name('bookings.result.show');
 });

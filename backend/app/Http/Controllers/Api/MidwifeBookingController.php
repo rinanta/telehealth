@@ -183,4 +183,57 @@ class MidwifeBookingController extends Controller
         ]]);
     }
 
+    public function complete(
+        string $id,
+        Request $request,
+        FirebaseService $firebase,
+    ): JsonResponse {
+        $data = $request->validate([
+            'summary' => ['required', 'string', 'min:10', 'max:2000'],
+            'advice' => ['required', 'string', 'min:10', 'max:2000'],
+            'supplement_note' => ['nullable', 'string', 'max:1000'],
+            'follow_up' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $midwifeProfile = $request->attributes->get('firebase_profile');
+        $midwifeName = is_string($midwifeProfile['name'] ?? null)
+            ? $midwifeProfile['name']
+            : 'Bidan';
+        $supplementNote = isset($data['supplement_note'])
+            ? trim($data['supplement_note'])
+            : null;
+
+        $outcome = $firebase->completeConsultationForMidwife(
+            $id,
+            $request->attributes->get('firebase_uid'),
+            $midwifeName,
+            [
+                'summary' => trim($data['summary']),
+                'advice' => trim($data['advice']),
+                'supplement_note' => $supplementNote === '' ? null : $supplementNote,
+                'follow_up' => trim($data['follow_up']),
+            ],
+        );
+
+        if (in_array($outcome['result'], ['not_found', 'not_owned'], true)) {
+            return response()->json([
+                'message' => 'Booking not found.',
+                'code' => 'booking_not_found',
+            ], 404);
+        }
+
+        if ($outcome['result'] !== 'completed') {
+            return response()->json([
+                'message' => 'This consultation is not active, so it cannot be completed.',
+                'code' => 'booking_not_actionable',
+            ], 409);
+        }
+
+        return response()->json(['data' => [
+            'id' => $id,
+            'status' => 'completed',
+            'consultation_completed_at' => $outcome['consultation_completed_at'],
+            'result' => $outcome['consultation_result'],
+        ]]);
+    }
+
 }

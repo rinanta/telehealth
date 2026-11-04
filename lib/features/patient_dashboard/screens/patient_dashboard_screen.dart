@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../data/models/booking_model.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/booking_repository.dart';
 
@@ -14,18 +15,20 @@ class PatientDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider);
-    final bookings = ref.watch(bookingsListProvider);
+    final bookings =
+        ref.watch(patientHistoryProvider).value ?? const <Booking>[];
 
     // Ambil sesi booking pasien yang sedang aktif atau perlu perhatian
-    final patientBookings = user == null
-        ? <dynamic>[]
-        : bookings.where((b) => b.patientId == user.uid).toList();
-    final activeOrPendingBooking = patientBookings.cast<dynamic>().firstWhere(
+    final activeOrPendingBooking = bookings.cast<Booking?>().firstWhere(
       (b) =>
-          b.status == 'active' ||
+          b!.status == 'active' ||
           b.status == 'confirmed' ||
           b.status == 'paid_pending_midwife' ||
           b.status == 'awaiting_payment',
+      orElse: () => null,
+    );
+    final latestCompletedBooking = bookings.cast<Booking?>().firstWhere(
+      (b) => b!.isCompleted,
       orElse: () => null,
     );
 
@@ -74,6 +77,11 @@ class PatientDashboardScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Muat ulang',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.invalidate(patientHistoryProvider),
+          ),
           IconButton(
             tooltip: 'Keluar Akun',
             icon: const Icon(Icons.logout, color: AppColors.danger),
@@ -410,60 +418,83 @@ class PatientDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 8),
 
             // Card Riwayat Terakhir
-            InkWell(
-              onTap: () =>
-                  context.push('/consultation-result/book_history_001'),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
+            if (latestCompletedBooking == null)
+              Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceVariant,
-                        borderRadius: BorderRadius.circular(12),
+                child: const Text(
+                  'Belum ada konsultasi yang selesai.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )
+            else
+              InkWell(
+                onTap: () => context.push(
+                  '/consultation-result/${latestCompletedBooking.id}',
+                ),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.description_outlined,
+                          color: AppColors.textPrimary,
+                          size: 22,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.description_outlined,
-                        color: AppColors.textPrimary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hasil: Bdn. Siti Rahmawati',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hasil: ${latestCompletedBooking.midwifeName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            'Pusing ortostatik & kram ligamen',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary,
+                            const SizedBox(height: 3),
+                            Text(
+                              latestCompletedBooking.complaint,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    const StatusBadge(status: 'completed'),
-                  ],
+                      const SizedBox(width: 6),
+                      const StatusBadge(status: 'completed'),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),

@@ -1,11 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../data/models/booking_model.dart';
-import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/booking_repository.dart';
+import '../../../data/repositories/consultation_chat_repository.dart';
 
 class MidwifeResultFormScreen extends ConsumerStatefulWidget {
   final String bookingId;
@@ -17,18 +18,10 @@ class MidwifeResultFormScreen extends ConsumerStatefulWidget {
 }
 
 class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScreen> {
-  final _summaryController = TextEditingController(
-    text: 'Pasien trimester 2 mengalami kram ligamen fisiologis (round ligament pain) dan hipotensi ortostatik ringan saat perubahan posisi mendadak.',
-  );
-  final _adviceController = TextEditingController(
-    text: 'Anjurkan relaksasi peregangan pinggul, hidrasi air putih minimal 2.5 liter per hari, dan istirahat berbaring miring ke kiri.',
-  );
-  final _supplementController = TextEditingController(
-    text: 'Lanjutkan Tablet Tambah Darah (Fe) 1x1 malam hari dan Kalsium 500mg 1x1 pagi hari.',
-  );
-  final _followUpController = TextEditingController(
-    text: 'Bila timbul tanda bahaya seperti perdarahan atau nyeri hebat, segera ke IGD terdekat. Kontrol ANC rutin 2 minggu lagi.',
-  );
+  final _summaryController = TextEditingController();
+  final _adviceController = TextEditingController();
+  final _supplementController = TextEditingController();
+  final _followUpController = TextEditingController();
 
   bool _isSaving = false;
   String? _errorMessage;
@@ -43,10 +36,15 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
   }
 
   Future<void> _handleSave() async {
-    if (_summaryController.text.trim().isEmpty ||
-        _adviceController.text.trim().isEmpty ||
-        _followUpController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Kolom ringkasan, saran, dan tindak lanjut wajib diisi.');
+    final summary = _summaryController.text.trim();
+    final advice = _adviceController.text.trim();
+    final followUp = _followUpController.text.trim();
+
+    if (summary.length < 10 || advice.length < 10 || followUp.length < 5) {
+      setState(
+        () => _errorMessage =
+            'Ringkasan dan saran minimal 10 karakter, tindak lanjut minimal 5 karakter.',
+      );
       return;
     }
 
@@ -56,29 +54,52 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
     });
 
     try {
-      final user = ref.read(authStateProvider);
-      final midwifeName = user?.name ?? 'Bdn. Siti Rahmawati, S.Tr.Keb';
-
       // FR-12: Bidan menyimpan ringkasan dan menyelesaikan konsultasi -> status completed
-      await ref.read(bookingsListProvider.notifier).completeConsultation(
+      await ref
+          .read(bookingRepositoryProvider)
+          .completeMidwifeConsultation(
             bookingId: widget.bookingId,
-            summary: _summaryController.text.trim(),
-            advice: _adviceController.text.trim(),
+            summary: summary,
+            advice: advice,
             supplementNote: _supplementController.text.trim(),
-            followUp: _followUpController.text.trim(),
-            savedBy: midwifeName,
+            followUp: followUp,
           );
+
+      ref.invalidate(midwifeBookingsProvider);
+      ref.invalidate(consultationSessionProvider(widget.bookingId));
+      ref.invalidate(consultationResultProvider(widget.bookingId));
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(backgroundColor: AppColors.success, content: Text('Hasil konsultasi berhasil disimpan & sesi ditutup!')),
+        const SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text('Hasil konsultasi berhasil disimpan & sesi ditutup!'),
+        ),
       );
 
       // Arahkan ke tampilan hasil
       context.pushReplacement('/consultation-result/${widget.bookingId}');
-    } catch (e) {
-      setState(() => _errorMessage = 'Gagal menyimpan hasil konsultasi: $e');
+    } on DioException catch (error) {
+      if (!mounted) return;
+      final response = error.response?.data;
+      final code = response is Map ? response['code'] : null;
+      setState(
+        () => _errorMessage = switch (code) {
+          'booking_not_actionable' =>
+            'Sesi ini tidak lagi aktif sehingga tidak dapat diselesaikan. Muat ulang daftar booking.',
+          'booking_not_found' => 'Booking tidak ditemukan.',
+          _ when error.response?.statusCode == 422 =>
+            'Isian belum memenuhi syarat. Periksa kembali setiap kolom.',
+          _ => 'Gagal menyimpan hasil konsultasi. Periksa koneksi lalu coba lagi.',
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _errorMessage =
+            'Gagal menyimpan hasil konsultasi. Periksa koneksi lalu coba lagi.',
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -86,7 +107,7 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
 
   @override
   Widget build(BuildContext context) {
-    final bookings = ref.watch(bookingsListProvider);
+    final bookings = ref.watch(midwifeBookingsProvider).value ?? const <Booking>[];
     final booking = bookings.cast<Booking?>().firstWhere(
           (b) => b?.id == widget.bookingId,
           orElse: () => null,
@@ -118,7 +139,7 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Pasien: ${booking?.patientName ?? 'Bunda Anisa'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        Text('Pasien: ${booking?.patientName ?? '-'}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                         Text('Keluhan: ${booking?.complaint ?? '-'}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),

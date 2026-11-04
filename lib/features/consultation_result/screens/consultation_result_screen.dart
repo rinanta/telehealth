@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
-import '../../../data/models/booking_model.dart';
+import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/booking_repository.dart';
 
 class ConsultationResultScreen extends ConsumerWidget {
@@ -14,20 +14,44 @@ class ConsultationResultScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bookingRepo = ref.watch(bookingRepositoryProvider);
-    final booking = ref.watch(bookingsListProvider).cast<Booking?>().firstWhere(
-          (b) => b?.id == bookingId,
-          orElse: () => bookingRepo.getBookingById(bookingId),
-        );
+    final resultAsync = ref.watch(consultationResultProvider(bookingId));
+    final isMidwife = ref.watch(authStateProvider)?.isMidwife ?? false;
 
-    final result = bookingRepo.getResultByBookingId(bookingId);
-
-    if (booking == null) {
+    if (resultAsync.isLoading && !resultAsync.hasValue) {
       return Scaffold(
         appBar: AppBar(title: const Text('Hasil Konsultasi')),
-        body: const Center(child: Text('Data konsultasi tidak ditemukan.')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
+
+    if (resultAsync.hasError && !resultAsync.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Hasil Konsultasi')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Hasil konsultasi belum dapat dimuat. Periksa koneksi lalu coba lagi.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () =>
+                      ref.invalidate(consultationResultProvider(bookingId)),
+                  child: const Text('Muat ulang'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final result = resultAsync.value;
+    final homeRoute = isMidwife ? '/midwife-dashboard' : '/patient-dashboard';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -37,7 +61,7 @@ class ConsultationResultScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Lihat Arsip Chat',
             icon: const Icon(Icons.chat_outlined),
-            onPressed: () => context.push('/consultation-chat/${booking.id}'),
+            onPressed: () => context.push('/consultation-chat/$bookingId'),
           ),
         ],
       ),
@@ -93,15 +117,17 @@ class ConsultationResultScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        Formatters.formatShortDate(booking.consultationCompletedAt ?? booking.createdAt),
+                        result == null
+                            ? '-'
+                            : Formatters.formatShortDate(result.completedAt),
                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('Pasien: ${booking.patientName}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  Text('Pasien: ${result?.patientName ?? '-'}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  Text('Bidan Pemeriksa: ${booking.midwifeName}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('Bidan Pemeriksa: ${result?.midwifeName ?? '-'}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                 ],
               ),
             ),
@@ -116,14 +142,20 @@ class ConsultationResultScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    Icon(Icons.hourglass_empty_rounded, size: 40, color: AppColors.warning),
-                    SizedBox(height: 12),
-                    Text(
+                    const Icon(Icons.hourglass_empty_rounded, size: 40, color: AppColors.warning),
+                    const SizedBox(height: 12),
+                    const Text(
                       'Bidan sedang menyusun rekap lembar hasil konsultasi ini. Silakan periksa kembali beberapa saat lagi.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () =>
+                          ref.invalidate(consultationResultProvider(bookingId)),
+                      child: const Text('Muat ulang'),
                     ),
                   ],
                 ),
@@ -194,7 +226,7 @@ class ConsultationResultScreen extends ConsumerWidget {
             AppButton(
               label: 'Kembali ke Beranda',
               isOutlined: true,
-              onPressed: () => context.go('/patient-dashboard'),
+              onPressed: () => context.go(homeRoute),
             ),
             const SizedBox(height: 20),
           ],

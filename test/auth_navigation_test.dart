@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:telebunda_app/app/routes.dart';
 import 'package:telebunda_app/core/network/api_client.dart';
+import 'package:telebunda_app/data/models/booking_model.dart';
 import 'package:telebunda_app/data/repositories/auth_repository.dart';
+import 'package:telebunda_app/data/repositories/booking_repository.dart';
 import 'package:telebunda_app/data/models/user_model.dart';
 
 void main() {
@@ -17,7 +19,10 @@ void main() {
   ) async {
     final notifier = _TestAuthNotifier();
     final container = ProviderContainer(
-      overrides: [authStateProvider.overrideWith((ref) => notifier)],
+      overrides: [
+        authStateProvider.overrideWith((ref) => notifier),
+        patientHistoryProvider.overrideWith((ref) async => const <Booking>[]),
+      ],
     );
     addTearDown(container.dispose);
     tester.view.physicalSize = const Size(1200, 2400);

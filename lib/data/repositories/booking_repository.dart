@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/network/api_client.dart';
@@ -202,6 +203,79 @@ class BookingRepository {
     }
 
     await apiClient.post(ApiEndpoints.midwifeBookingStart(bookingId));
+  }
+
+  Future<void> completeMidwifeConsultation({
+    required String bookingId,
+    required String summary,
+    required String advice,
+    String? supplementNote,
+    required String followUp,
+  }) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final note = supplementNote?.trim() ?? '';
+    await apiClient.post(
+      ApiEndpoints.midwifeBookingComplete(bookingId),
+      data: {
+        'summary': summary,
+        'advice': advice,
+        if (note.isNotEmpty) 'supplement_note': note,
+        'follow_up': followUp,
+      },
+    );
+  }
+
+  /// Hasil konsultasi dari server; `null` jika belum disimpan bidan.
+  Future<ConsultationResult?> fetchConsultationResult(String bookingId) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    try {
+      final response = await apiClient.get(ApiEndpoints.bookingResult(bookingId));
+      final payload = response.data;
+      if (payload is! Map || payload['data'] is! Map) {
+        throw const FormatException(
+          'The API returned an invalid consultation result response.',
+        );
+      }
+
+      return ConsultationResult.fromJson(
+        Map<String, dynamic>.from(payload['data'] as Map),
+      );
+    } on DioException catch (error) {
+      final body = error.response?.data;
+      if (error.response?.statusCode == 404 &&
+          body is Map &&
+          body['code'] == 'result_not_found') {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<Booking>> getPatientHistory() async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final response = await apiClient.get(ApiEndpoints.history);
+    final payload = response.data;
+    if (payload is! Map || payload['data'] is! List) {
+      throw const FormatException(
+        'The API returned an invalid patient history response.',
+      );
+    }
+
+    return (payload['data'] as List)
+        .map((item) => Booking.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
   }
 
   Future<PaymentCheckout> createPaymentCheckout({
@@ -428,6 +502,18 @@ final serverBookingProvider = FutureProvider.family<BookingHold, String>((
 final midwifeBookingsProvider = FutureProvider<List<Booking>>((ref) {
   return ref.watch(bookingRepositoryProvider).getMidwifeBookings();
 });
+
+/// Riwayat & booking aktif milik pasien dari server (terbaru lebih dulu).
+final patientHistoryProvider = FutureProvider.autoDispose<List<Booking>>((ref) {
+  return ref.watch(bookingRepositoryProvider).getPatientHistory();
+});
+
+final consultationResultProvider = FutureProvider.autoDispose
+    .family<ConsultationResult?, String>((ref, bookingId) {
+      return ref
+          .watch(bookingRepositoryProvider)
+          .fetchConsultationResult(bookingId);
+    });
 
 final bookingsListProvider =
     StateNotifierProvider<BookingNotifier, List<Booking>>((ref) {

@@ -2,7 +2,7 @@
 class ApiEndpoints {
   // Base URL konfigurasi lingkungan DEV/STAGING
   static const String baseUrl =
-      'http://10.0.2.2:8000/api'; // 10.0.2.2 untuk emulator Android
+      'http://192.168.18.5:8000/api'; // ini kalo 10.0.2.2 untuk emulator Android
 
   // Auth & Profile
   static const String register = '/auth/register';
@@ -30,6 +30,10 @@ class ApiEndpoints {
       bookingReject(bookingId);
   static String midwifeBookingStart(String bookingId) =>
       '/bookings/$bookingId/start';
+  static String midwifeBookingComplete(String bookingId) =>
+      '/bookings/$bookingId/complete';
+  static String bookingResult(String bookingId) =>
+      '/bookings/$bookingId/result';
 
   // Consultations & Live Sessions
   static String consultationStart(String id) => '/consultations/$id/start';

@@ -126,6 +126,16 @@ class FirebaseService
         ]);
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getBookingsForPatient(string $patientId): array
+    {
+        return $this->runFirestoreQuery('bookings', [
+            ['field' => 'patient_id', 'value' => ['stringValue' => $patientId]],
+        ]);
+    }
+
     public function acceptBookingForMidwife(string $bookingId, string $midwifeId): string
     {
         return $this->transitionMidwifeBooking(
@@ -193,6 +203,119 @@ class FirebaseService
                 ['status', 'consultation_started_at'],
             ),
         ]) ? 'started' : 'conflict';
+    }
+
+    /**
+     * Closes an active consultation and stores the midwife's result sheet in one
+     * transaction. The result document ID equals the booking ID, so a booking can
+     * never hold more than one result. Allowed after the 30-minute chat window
+     * has ended (PRD: the midwife can still finalise the session).
+     *
+     * @param  array{summary: string, advice: string, supplement_note?: string|null, follow_up: string}  $result
+     * @return array{result: string, consultation_result?: array<string, mixed>, consultation_completed_at?: string}
+     */
+    public function completeConsultationForMidwife(
+        string $bookingId,
+        string $midwifeId,
+        string $midwifeName,
+        array $result,
+    ): array {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+
+        if ($booking === null) {
+            return ['result' => 'not_found'];
+        }
+
+        if (($booking['midwife_id'] ?? null) !== $midwifeId) {
+            return ['result' => 'not_owned'];
+        }
+
+        if (($booking['status'] ?? null) !== 'active') {
+            return ['result' => 'not_active'];
+        }
+
+        $patientId = is_string($booking['patient_id'] ?? null) ? $booking['patient_id'] : '';
+        $patientProfile = $patientId !== '' ? $this->getUserProfile($patientId) : null;
+        $completedAt = now('UTC')->toIso8601String();
+
+        $consultationResult = [
+            'booking_id' => $bookingId,
+            'consultation_id' => $bookingId,
+            'patient_id' => $patientId,
+            'midwife_id' => $midwifeId,
+            'patient_name' => is_string($patientProfile['name'] ?? null) ? $patientProfile['name'] : 'Pasien',
+            'midwife_name' => $midwifeName,
+            'summary' => $result['summary'],
+            'advice' => $result['advice'],
+            'follow_up' => $result['follow_up'],
+            'saved_by' => $midwifeName,
+            'completed_at' => $completedAt,
+        ];
+
+        $supplementNote = $result['supplement_note'] ?? null;
+        if (is_string($supplementNote) && $supplementNote !== '') {
+            $consultationResult['supplement_note'] = $supplementNote;
+        }
+
+        $fields = [];
+        foreach ($consultationResult as $key => $value) {
+            $fields[$key] = $key === 'completed_at'
+                ? ['timestampValue' => $value]
+                : ['stringValue' => $value];
+        }
+
+        $saved = $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'status' => ['stringValue' => 'completed'],
+                    'consultation_completed_at' => ['timestampValue' => $completedAt],
+                ],
+                ['status', 'consultation_completed_at'],
+            ),
+            [
+                'update' => [
+                    'name' => $this->documentName('consultation_results', $bookingId),
+                    'fields' => $fields,
+                ],
+                'currentDocument' => ['exists' => false],
+            ],
+        ]);
+
+        if (! $saved) {
+            return ['result' => 'conflict'];
+        }
+
+        return [
+            'result' => 'completed',
+            'consultation_completed_at' => $completedAt,
+            'consultation_result' => ['id' => $bookingId, ...$consultationResult],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getConsultationResult(string $bookingId): ?array
+    {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->get($this->documentUrl('consultation_results', $bookingId));
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+
+        $consultationResult = $this->decodeFields($response->json('fields', []));
+        $consultationResult['id'] = $bookingId;
+
+        return $consultationResult;
     }
 
     /**

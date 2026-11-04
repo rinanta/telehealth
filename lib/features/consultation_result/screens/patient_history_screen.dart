@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/booking_repository.dart';
 
 class PatientHistoryScreen extends ConsumerWidget {
@@ -12,18 +11,47 @@ class PatientHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authStateProvider);
-    final bookings = ref.watch(bookingsListProvider);
-    final patientBookings = bookings.where((b) => b.patientId == (user?.uid ?? 'patient_001')).toList();
+    final historyAsync = ref.watch(patientHistoryProvider);
+
+    if (historyAsync.isLoading && !historyAsync.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Riwayat Konsultasi')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (historyAsync.hasError && !historyAsync.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Riwayat Konsultasi')),
+        body: Center(
+          child: OutlinedButton(
+            onPressed: () => ref.invalidate(patientHistoryProvider),
+            child: const Text('Gagal memuat. Coba lagi'),
+          ),
+        ),
+      );
+    }
+
+    final patientBookings = historyAsync.value ?? const [];
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Riwayat Konsultasi'),
+        actions: [
+          IconButton(
+            tooltip: 'Muat ulang',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.invalidate(patientHistoryProvider),
+          ),
+        ],
       ),
       body: patientBookings.isEmpty
           ? const Center(child: Text('Belum ada riwayat konsultasi.'))
-          : ListView.separated(
+          : RefreshIndicator(
+              onRefresh: () => ref.refresh(patientHistoryProvider.future),
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: patientBookings.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
@@ -77,6 +105,7 @@ class PatientHistoryScreen extends ConsumerWidget {
                   ),
                 );
               },
+              ),
             ),
     );
   }
