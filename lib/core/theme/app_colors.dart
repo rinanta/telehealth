@@ -38,6 +38,6 @@ class AppColors {
   static const Color info = Color(0xFF3B82F6);
   static const Color infoContainer = Color(0xFFDBEAFE);
 
-  // Mayar Sandbox Accent
-  static const Color mayarBrand = Color(0xFF1474FC);
+  // Payment (Midtrans Sandbox) accent
+  static const Color paymentAccent = Color(0xFF1474FC);
 }

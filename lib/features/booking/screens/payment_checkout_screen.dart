@@ -11,17 +11,17 @@ import '../../../core/widgets/app_button.dart';
 import '../../../data/models/booking_hold_model.dart';
 import '../../../data/repositories/booking_repository.dart';
 
-class MayarCheckoutScreen extends ConsumerStatefulWidget {
+class PaymentCheckoutScreen extends ConsumerStatefulWidget {
   final String bookingId;
 
-  const MayarCheckoutScreen({super.key, required this.bookingId});
+  const PaymentCheckoutScreen({super.key, required this.bookingId});
 
   @override
-  ConsumerState<MayarCheckoutScreen> createState() =>
-      _MayarCheckoutScreenState();
+  ConsumerState<PaymentCheckoutScreen> createState() =>
+      _PaymentCheckoutScreenState();
 }
 
-class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
+class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
   final _mobileController = TextEditingController();
   Timer? _timer;
   DateTime _now = DateTime.now();
@@ -51,7 +51,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Pembayaran Mayar Sandbox')),
+      appBar: AppBar(title: const Text('Pembayaran Midtrans Sandbox')),
       body: bookingAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => _buildLoadError(),
@@ -80,7 +80,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
               border: Border.all(color: const Color(0xFFBFDBFE)),
             ),
             child: const Text(
-              'Pembayaran diproses melalui halaman resmi Mayar. Status booking hanya berubah setelah server memverifikasi pembayaran.',
+              'Pembayaran diproses melalui halaman resmi Midtrans. Status booking hanya berubah setelah server memverifikasi pembayaran.',
               style: TextStyle(
                 fontSize: 12,
                 color: Color(0xFF1E3A8A),
@@ -163,7 +163,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
                   ? 'Buat tautan pembayaran'
                   : 'Lanjutkan ke pembayaran',
               icon: Icons.payment,
-              backgroundColor: AppColors.mayarBrand,
+              backgroundColor: AppColors.paymentAccent,
               isLoading: _isProcessing,
               onPressed: _isProcessing
                   ? null
@@ -211,7 +211,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
 
         final checkout = await ref
             .read(bookingRepositoryProvider)
-            .createMayarCheckout(bookingId: booking.id, mobile: mobile);
+            .createPaymentCheckout(bookingId: booking.id, mobile: mobile);
         checkoutUrl = checkout.checkoutUrl;
         if (mounted) setState(() => _checkoutUrl = checkoutUrl);
       }
@@ -223,7 +223,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
       if (!opened) {
         setState(() {
           _errorMessage =
-              'Tautan Mayar sudah dibuat, tetapi tidak dapat dibuka di perangkat ini.';
+              'Tautan pembayaran sudah dibuat, tetapi tidak dapat dibuka di perangkat ini.';
         });
         return;
       }
@@ -231,7 +231,7 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
       if (mounted) {
         setState(() {
           _infoMessage =
-              'Selesaikan pembayaran di halaman Mayar, lalu kembali dan periksa status booking.';
+              'Selesaikan pembayaran di halaman Midtrans, lalu kembali dan periksa status booking.';
         });
         ref.invalidate(serverBookingProvider(booking.id));
       }
@@ -316,20 +316,20 @@ class _MayarCheckoutScreenState extends ConsumerState<MayarCheckoutScreen> {
         'Booking ini tidak lagi menunggu pembayaran. Periksa status booking.',
       'patient_profile_incomplete' =>
         'Profil pasien memerlukan nama dan email sebelum pembayaran.',
-      'mayar_not_configured' =>
-        'Mayar belum dikonfigurasi di backend. Hubungi pengelola aplikasi.',
-      'mayar_auth_failed' =>
-        'Mayar menolak API key atau izinnya. Pengelola perlu memeriksa API key Sandbox dan akses Read & Write di backend.',
-      'mayar_request_rejected' =>
-        'Mayar menolak data invoice${providerStatus is int ? ' (HTTP $providerStatus)' : ''}. Pastikan nomor ponsel dan data profil valid, lalu coba lagi.',
-      'mayar_rate_limited' =>
-        'Mayar membatasi permintaan. Tunggu sebentar sebelum mencoba lagi.',
-      'mayar_invalid_response' =>
-        'Respons invoice dari Mayar tidak sesuai. Periksa versi API dan konfigurasi backend.',
-      'mayar_tls_error' =>
-        'Backend gagal membuat koneksi HTTPS aman ke Mayar (TLS). Coba jaringan lain atau periksa VPN, proxy, firewall, dan pemeriksaan SSL pada komputer yang menjalankan Laravel.',
-      'mayar_unavailable' =>
-        'Mayar sedang tidak dapat dihubungi. Coba lagi beberapa saat.',
+      'payment_not_configured' =>
+        'Midtrans belum dikonfigurasi di backend. Hubungi pengelola aplikasi.',
+      'payment_auth_failed' =>
+        'Midtrans menolak Server Key. Pengelola perlu memeriksa MIDTRANS_SERVER_KEY dan MIDTRANS_ENVIRONMENT (Sandbox) di backend.',
+      'payment_request_rejected' =>
+        'Midtrans menolak data transaksi${providerStatus is int ? ' (HTTP $providerStatus)' : ''}. Pastikan nomor ponsel dan data profil valid, lalu coba lagi.',
+      'payment_rate_limited' =>
+        'Midtrans membatasi permintaan. Tunggu sebentar sebelum mencoba lagi.',
+      'payment_invalid_response' =>
+        'Respons transaksi dari Midtrans tidak sesuai. Periksa konfigurasi backend.',
+      'payment_tls_error' =>
+        'Backend gagal membuat koneksi HTTPS aman ke Midtrans (TLS). Coba jaringan lain atau periksa VPN, proxy, firewall, dan pemeriksaan SSL pada komputer yang menjalankan Laravel.',
+      'payment_unavailable' =>
+        'Midtrans sedang tidak dapat dihubungi. Coba lagi beberapa saat.',
       _ when statusCode == 401 => 'Sesi login berakhir. Silakan masuk kembali.',
       _ when statusCode != null && statusCode >= 500 =>
         'Server sedang bermasalah (HTTP $statusCode). Coba lagi nanti.',

@@ -35,10 +35,9 @@ return [
         ],
     ],
 
-    'mayar' => [
-        'api_key' => env('MAYAR_API_KEY'),
-        'environment' => env('MAYAR_ENVIRONMENT', 'sandbox'),
-        'webhook_secret' => env('MAYAR_WEBHOOK_SECRET'),
+    'midtrans' => [
+        'server_key' => env('MIDTRANS_SERVER_KEY'),
+        'environment' => env('MIDTRANS_ENVIRONMENT', 'sandbox'),
     ],
 
 ];

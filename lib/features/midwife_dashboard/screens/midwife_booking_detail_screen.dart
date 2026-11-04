@@ -103,7 +103,7 @@ class _MidwifeBookingDetailScreenState
             ),
             const SizedBox(height: 8),
             const Text(
-              'Pengembalian dana tidak otomatis. Setelah menolak, lakukan refund manual melalui Mayar.',
+              'Pengembalian dana tidak otomatis. Setelah menolak, lakukan refund manual melalui dashboard Midtrans.',
               style: TextStyle(fontSize: 12, color: AppColors.danger),
             ),
             const SizedBox(height: 10),
@@ -147,7 +147,7 @@ class _MidwifeBookingDetailScreenState
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Reservasi ditolak. Pembayaran harus direfund manual melalui Mayar.',
+                      'Reservasi ditolak. Pembayaran harus direfund manual melalui dashboard Midtrans.',
                     ),
                   ),
                 );
@@ -344,11 +344,11 @@ class _MidwifeBookingDetailScreenState
                         ),
                       ),
                       const Text(
-                        'Mayar Sandbox Gateway',
+                        'Midtrans Sandbox',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.mayarBrand,
+                          color: AppColors.paymentAccent,
                         ),
                       ),
                     ],

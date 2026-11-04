@@ -22,6 +22,26 @@ registration; midwife applications are always created as pending. The demo
 account presets remain available in debug builds and do not authenticate with
 the backend.
 
+## Midtrans Sandbox payment setup
+
+Payments use Midtrans Snap (redirect). Only the backend talks to Midtrans.
+
+1. Create a Midtrans account and switch the dashboard to **Sandbox**.
+2. Copy the Sandbox **Server Key** (`SB-Mid-server-...`) from
+   Settings → Access Keys into `backend/.env`:
+
+   ```
+   MIDTRANS_ENVIRONMENT=sandbox
+   MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxx
+   ```
+
+3. Expose Laravel over public HTTPS (for example a Cloudflare Tunnel or ngrok)
+   and set **Settings → Configuration → Payment Notification URL** to
+   `https://<your-tunnel>/api/webhooks/midtrans`.
+4. Pay with the Midtrans Sandbox simulators (virtual account, QRIS, GoPay,
+   test cards). The booking only becomes `paid_pending_midwife` after the
+   backend verifies the notification signature and the transaction status.
+
 ## Local checks
 
 From the repository root:

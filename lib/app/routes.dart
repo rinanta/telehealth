@@ -9,7 +9,7 @@ import '../features/auth/screens/register_screen.dart';
 import '../features/auth/screens/splash_screen.dart';
 import '../features/booking/screens/booking_form_screen.dart';
 import '../features/booking/screens/booking_status_screen.dart';
-import '../features/booking/screens/mayar_checkout_screen.dart';
+import '../features/booking/screens/payment_checkout_screen.dart';
 import '../data/models/booking_hold_model.dart';
 import '../features/consultation/screens/consultation_chat_screen.dart';
 import '../features/consultation_result/screens/consultation_result_screen.dart';
@@ -102,10 +102,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/mayar-checkout/:bookingId',
+        path: '/payment-checkout/:bookingId',
         builder: (context, state) {
           final bookingId = state.pathParameters['bookingId'] ?? '';
-          return MayarCheckoutScreen(bookingId: bookingId);
+          return PaymentCheckoutScreen(bookingId: bookingId);
         },
       ),
       GoRoute(

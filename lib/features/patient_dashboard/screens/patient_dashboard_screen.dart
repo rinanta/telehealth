@@ -275,11 +275,11 @@ class PatientDashboardScreen extends ConsumerWidget {
                     else if (activeOrPendingBooking.status ==
                         'awaiting_payment')
                       AppButton(
-                        label: 'Lanjutkan Pembayaran Mayar Sandbox',
+                        label: 'Lanjutkan Pembayaran Midtrans Sandbox',
                         icon: Icons.payment_rounded,
-                        backgroundColor: AppColors.mayarBrand,
+                        backgroundColor: AppColors.paymentAccent,
                         onPressed: () => context.push(
-                          '/mayar-checkout/${activeOrPendingBooking.id}',
+                          '/payment-checkout/${activeOrPendingBooking.id}',
                         ),
                       )
                     else

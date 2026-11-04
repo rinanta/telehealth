@@ -1,15 +1,15 @@
-class MayarCheckout {
+class PaymentCheckout {
   final String paymentId;
   final String checkoutUrl;
   final String status;
 
-  const MayarCheckout({
+  const PaymentCheckout({
     required this.paymentId,
     required this.checkoutUrl,
     required this.status,
   });
 
-  factory MayarCheckout.fromJson(Map<String, dynamic> json) {
+  factory PaymentCheckout.fromJson(Map<String, dynamic> json) {
     final paymentId = json['payment_id'];
     final checkoutUrl = json['checkout_url'];
     final status = json['status'];
@@ -27,7 +27,7 @@ class MayarCheckout {
       );
     }
 
-    return MayarCheckout(
+    return PaymentCheckout(
       paymentId: paymentId,
       checkoutUrl: checkoutUrl,
       status: status,

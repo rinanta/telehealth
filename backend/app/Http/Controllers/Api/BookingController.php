@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\BookingConfigurationException;
-use App\Exceptions\MayarApiException;
+use App\Exceptions\MidtransApiException;
 use App\Exceptions\SlotUnavailableException;
 use App\Http\Controllers\Controller;
 use App\Services\FirebaseService;
-use App\Services\MayarService;
+use App\Services\MidtransService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -71,7 +71,7 @@ class BookingController extends Controller
         string $id,
         Request $request,
         FirebaseService $firebase,
-        MayarService $mayar,
+        MidtransService $midtrans,
     ): JsonResponse {
         $data = $request->validate([
             'mobile' => ['required', 'string', 'max:32'],
@@ -111,10 +111,10 @@ class BookingController extends Controller
             ]]);
         }
 
-        if (! $mayar->isConfigured()) {
+        if (! $midtrans->isConfigured()) {
             return response()->json([
-                'message' => 'Mayar is not configured on the server.',
-                'code' => 'mayar_not_configured',
+                'message' => 'Midtrans is not configured on the server.',
+                'code' => 'payment_not_configured',
             ], 503);
         }
 
@@ -142,7 +142,7 @@ class BookingController extends Controller
         }
 
         try {
-            $invoice = $mayar->createInvoice(
+            $payment = $midtrans->createTransaction(
                 trim($name),
                 trim($email),
                 $data['mobile'],
@@ -150,8 +150,8 @@ class BookingController extends Controller
                 $id,
                 $holdExpiresAt,
             );
-        } catch (MayarApiException $exception) {
-            Log::warning('Mayar invoice creation failed.', [
+        } catch (MidtransApiException $exception) {
+            Log::warning('Midtrans transaction creation failed.', [
                 'booking_id' => $id,
                 'failure_type' => $exception->failureType,
                 'provider_status' => $exception->providerStatus,
@@ -159,33 +159,33 @@ class BookingController extends Controller
 
             [$message, $code, $status] = match ($exception->failureType) {
                 'credentials' => [
-                    'Mayar rejected the server API key or its permissions.',
-                    'mayar_auth_failed',
+                    'Midtrans rejected the server key. Check MIDTRANS_SERVER_KEY and MIDTRANS_ENVIRONMENT.',
+                    'payment_auth_failed',
                     503,
                 ],
                 'request_rejected' => [
-                    'Mayar rejected the invoice data. Check the server logs for the provider status.',
-                    'mayar_request_rejected',
+                    'Midtrans rejected the transaction data. Check the server logs for the provider status.',
+                    'payment_request_rejected',
                     502,
                 ],
                 'rate_limited' => [
-                    'Mayar is rate-limiting invoice creation. Wait before retrying.',
-                    'mayar_rate_limited',
+                    'Midtrans is rate-limiting transaction creation. Wait before retrying.',
+                    'payment_rate_limited',
                     503,
                 ],
                 'invalid_response' => [
-                    'Mayar returned an unexpected invoice response.',
-                    'mayar_invalid_response',
+                    'Midtrans returned an unexpected transaction response.',
+                    'payment_invalid_response',
                     502,
                 ],
                 'tls_handshake' => [
-                    'The backend could not establish a secure HTTPS connection to Mayar. Check the server network, VPN, proxy, or TLS inspection settings.',
-                    'mayar_tls_error',
+                    'The backend could not establish a secure HTTPS connection to Midtrans. Check the server network, VPN, proxy, or TLS inspection settings.',
+                    'payment_tls_error',
                     502,
                 ],
                 default => [
-                    'Mayar could not be reached. Check the network and retry shortly.',
-                    'mayar_unavailable',
+                    'Midtrans could not be reached. Check the network and retry shortly.',
+                    'payment_unavailable',
                     502,
                 ],
             };
@@ -197,12 +197,12 @@ class BookingController extends Controller
             ], $status);
         }
 
-        if (! $firebase->attachMayarInvoice(
+        if (! $firebase->attachPaymentSession(
             $id,
             $patientId,
             $amount,
             $holdExpiresAt,
-            $invoice,
+            $payment,
         )) {
             $latestBooking = $firebase->getBooking($id);
             if (
@@ -216,9 +216,9 @@ class BookingController extends Controller
                 ]]);
             }
 
-            Log::warning('Mayar invoice was created but the booking hold changed before it could be saved.', [
+            Log::warning('Midtrans transaction was created but the booking hold changed before it could be saved.', [
                 'booking_id' => $id,
-                'invoice_id' => $invoice['id'],
+                'order_id' => $payment['id'],
             ]);
 
             return response()->json([
@@ -228,8 +228,8 @@ class BookingController extends Controller
         }
 
         return response()->json(['data' => [
-            'payment_id' => $invoice['id'],
-            'checkout_url' => $invoice['link'],
+            'payment_id' => $payment['id'],
+            'checkout_url' => $payment['link'],
             'status' => 'pending',
         ]], 201);
     }

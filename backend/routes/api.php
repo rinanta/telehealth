@@ -3,7 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ConsultationChatController;
-use App\Http\Controllers\Api\MayarWebhookController;
+use App\Http\Controllers\Api\MidtransWebhookController;
 use App\Http\Controllers\Api\MidwifeBookingController;
 use App\Http\Controllers\Api\MidwifeController;
 use App\Http\Middleware\RequireMidwifeRole;
@@ -16,9 +16,9 @@ Route::get('/health', static fn (): JsonResponse => response()->json([
     'status' => 'ok',
 ]))->name('health');
 
-Route::post('/webhooks/mayar/{secret}', [MayarWebhookController::class, 'handle'])
-    ->middleware('throttle:10,1')
-    ->name('webhooks.mayar');
+Route::post('/webhooks/midtrans', [MidtransWebhookController::class, 'handle'])
+    ->middleware('throttle:60,1')
+    ->name('webhooks.midtrans');
 
 Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::post('/auth/register', [AuthController::class, 'register'])->name('auth.register');

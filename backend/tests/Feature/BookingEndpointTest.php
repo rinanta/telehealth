@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Exceptions\MayarApiException;
+use App\Exceptions\MidtransApiException;
 use App\Exceptions\SlotUnavailableException;
 use App\Services\FirebaseService;
-use App\Services\MayarService;
+use App\Services\MidtransService;
 use Mockery;
 use Mockery\MockInterface;
 use Tests\TestCase;
@@ -187,7 +187,7 @@ class BookingEndpointTest extends TestCase
             ->assertJsonPath('code', 'slot_unavailable');
     }
 
-    public function test_checkout_creates_an_invoice_using_the_server_booking_amount(): void
+    public function test_checkout_creates_a_transaction_using_the_server_booking_amount(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
         $holdExpiresAt = now('UTC')->addMinutes(15)->toIso8601String();
@@ -203,19 +203,19 @@ class BookingEndpointTest extends TestCase
                 'hold_expires_at' => $holdExpiresAt,
             ]);
         $invoice = [
-            'id' => 'invoice-123',
-            'transaction_id' => 'transaction-123',
-            'link' => 'https://testingmayar.myr.id/invoices/test',
+            'id' => 'booking-123',
+            'transaction_id' => 'snap-token-123',
+            'link' => 'https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token-123',
         ];
-        $firebase->shouldReceive('attachMayarInvoice')
+        $firebase->shouldReceive('attachPaymentSession')
             ->once()
             ->with('booking-123', 'patient-123', 75000, $holdExpiresAt, $invoice)
             ->andReturn(true);
         $this->app->instance(FirebaseService::class, $firebase);
 
-        $mayar = Mockery::mock(MayarService::class);
-        $mayar->shouldReceive('isConfigured')->once()->andReturn(true);
-        $mayar->shouldReceive('createInvoice')
+        $midtrans = Mockery::mock(MidtransService::class);
+        $midtrans->shouldReceive('isConfigured')->once()->andReturn(true);
+        $midtrans->shouldReceive('createTransaction')
             ->once()
             ->with(
                 'Bunda',
@@ -226,7 +226,7 @@ class BookingEndpointTest extends TestCase
                 $holdExpiresAt,
             )
             ->andReturn($invoice);
-        $this->app->instance(MayarService::class, $mayar);
+        $this->app->instance(MidtransService::class, $midtrans);
 
         $this->withToken('valid-token')
             ->postJson('/api/bookings/booking-123/checkout', [
@@ -234,7 +234,7 @@ class BookingEndpointTest extends TestCase
                 'amount' => 1,
             ])
             ->assertCreated()
-            ->assertJsonPath('data.payment_id', 'invoice-123')
+            ->assertJsonPath('data.payment_id', 'booking-123')
             ->assertJsonPath('data.checkout_url', $invoice['link'])
             ->assertJsonPath('data.status', 'pending');
     }
@@ -252,12 +252,12 @@ class BookingEndpointTest extends TestCase
                 'status' => 'awaiting_payment',
                 'hold_expires_at' => '2026-11-04T03:59:00Z',
             ]);
-        $firebase->shouldNotReceive('attachMayarInvoice');
+        $firebase->shouldNotReceive('attachPaymentSession');
         $this->app->instance(FirebaseService::class, $firebase);
 
-        $mayar = Mockery::mock(MayarService::class);
-        $mayar->shouldNotReceive('createInvoice');
-        $this->app->instance(MayarService::class, $mayar);
+        $midtrans = Mockery::mock(MidtransService::class);
+        $midtrans->shouldNotReceive('createTransaction');
+        $this->app->instance(MidtransService::class, $midtrans);
 
         $this->withToken('valid-token')
             ->postJson('/api/bookings/booking-123/checkout', [
@@ -267,7 +267,7 @@ class BookingEndpointTest extends TestCase
             ->assertJsonPath('code', 'booking_hold_expired');
     }
 
-    public function test_checkout_reports_invalid_mayar_api_key_without_exposing_provider_details(): void
+    public function test_checkout_reports_invalid_midtrans_server_key_without_exposing_provider_details(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
         $holdExpiresAt = now('UTC')->addMinutes(15)->toIso8601String();
@@ -284,28 +284,28 @@ class BookingEndpointTest extends TestCase
             ]);
         $this->app->instance(FirebaseService::class, $firebase);
 
-        $mayar = Mockery::mock(MayarService::class);
-        $mayar->shouldReceive('isConfigured')->once()->andReturn(true);
-        $mayar->shouldReceive('createInvoice')
+        $midtrans = Mockery::mock(MidtransService::class);
+        $midtrans->shouldReceive('isConfigured')->once()->andReturn(true);
+        $midtrans->shouldReceive('createTransaction')
             ->once()
-            ->andThrow(new MayarApiException(
-                'Mayar rejected the invoice request.',
+            ->andThrow(new MidtransApiException(
+                'Midtrans rejected the transaction request.',
                 'credentials',
                 401,
             ));
-        $this->app->instance(MayarService::class, $mayar);
+        $this->app->instance(MidtransService::class, $midtrans);
 
         $this->withToken('valid-token')
             ->postJson('/api/bookings/booking-123/checkout', [
                 'mobile' => '081234567890',
             ])
             ->assertServiceUnavailable()
-            ->assertJsonPath('code', 'mayar_auth_failed')
+            ->assertJsonPath('code', 'payment_auth_failed')
             ->assertJsonPath('provider_status', 401)
-            ->assertJsonMissingPath('api_key');
+            ->assertJsonMissingPath('server_key');
     }
 
-    public function test_checkout_explains_mayar_tls_handshake_failures(): void
+    public function test_checkout_explains_midtrans_tls_handshake_failures(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
         $holdExpiresAt = now('UTC')->addMinutes(15)->toIso8601String();
@@ -322,77 +322,143 @@ class BookingEndpointTest extends TestCase
             ]);
         $this->app->instance(FirebaseService::class, $firebase);
 
-        $mayar = Mockery::mock(MayarService::class);
-        $mayar->shouldReceive('isConfigured')->once()->andReturn(true);
-        $mayar->shouldReceive('createInvoice')
+        $midtrans = Mockery::mock(MidtransService::class);
+        $midtrans->shouldReceive('isConfigured')->once()->andReturn(true);
+        $midtrans->shouldReceive('createTransaction')
             ->once()
-            ->andThrow(new MayarApiException(
-                'Mayar is temporarily unavailable.',
+            ->andThrow(new MidtransApiException(
+                'Midtrans is temporarily unavailable.',
                 'tls_handshake',
             ));
-        $this->app->instance(MayarService::class, $mayar);
+        $this->app->instance(MidtransService::class, $midtrans);
 
         $this->withToken('valid-token')
             ->postJson('/api/bookings/booking-123/checkout', [
                 'mobile' => '081234567890',
             ])
             ->assertStatus(502)
-            ->assertJsonPath('code', 'mayar_tls_error')
+            ->assertJsonPath('code', 'payment_tls_error')
             ->assertJsonPath(
                 'message',
-                'The backend could not establish a secure HTTPS connection to Mayar. Check the server network, VPN, proxy, or TLS inspection settings.',
+                'The backend could not establish a secure HTTPS connection to Midtrans. Check the server network, VPN, proxy, or TLS inspection settings.',
             );
     }
 
-    public function test_mayar_webhook_verifies_invoice_with_provider_before_booking_update(): void
+    public function test_midtrans_webhook_verifies_status_with_provider_before_booking_update(): void
     {
-        config([
-            'services.mayar.webhook_secret' => 'test-webhook-secret',
-        ]);
+        $payload = $this->midtransNotification('booking-123', '200', '75000.00');
         $firebase = Mockery::mock(FirebaseService::class);
-        $firebase->shouldReceive('getPendingMayarPayments')
+        $firebase->shouldReceive('completePayment')
             ->once()
-            ->andReturn([['invoice_id' => 'invoice-123']]);
-        $firebase->shouldReceive('completeMayarPayment')
-            ->once()
-            ->with('invoice-123', [
-                'id' => 'invoice-123',
-                'amount' => 75000,
+            ->with('booking-123', [
+                'id' => 'booking-123',
                 'status' => 'paid',
+                'amount' => 75000,
+                'transaction_status' => 'settlement',
             ])
             ->andReturn('paid');
         $this->app->instance(FirebaseService::class, $firebase);
 
-        $mayar = Mockery::mock(MayarService::class);
-        $mayar->shouldReceive('isConfigured')->once()->andReturn(true);
-        $mayar->shouldReceive('getInvoice')
+        $midtrans = Mockery::mock(MidtransService::class)->makePartial();
+        $midtrans->shouldReceive('getStatus')
             ->once()
-            ->with('invoice-123')
+            ->with('booking-123')
             ->andReturn([
-                'id' => 'invoice-123',
-                'amount' => 75000,
+                'id' => 'booking-123',
                 'status' => 'paid',
+                'amount' => 75000,
+                'transaction_status' => 'settlement',
             ]);
-        $this->app->instance(MayarService::class, $mayar);
+        $this->app->instance(MidtransService::class, $midtrans);
 
-        $this->postJson('/api/webhooks/mayar/test-webhook-secret', [
-            'event' => ['received' => 'payment.received'],
-            'data' => ['id' => 'webhook-event'],
-        ])
+        $this->postJson('/api/webhooks/midtrans', $payload)
             ->assertOk()
             ->assertJsonPath('status', 'processed')
             ->assertJsonPath('payments_verified', 1);
     }
 
-    public function test_mayar_webhook_rejects_an_invalid_url_secret(): void
+    public function test_midtrans_webhook_ignores_orders_that_are_not_paid(): void
     {
-        config([
-            'services.mayar.webhook_secret' => 'test-webhook-secret',
-        ]);
+        $payload = $this->midtransNotification('booking-123', '201', '75000.00');
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldNotReceive('completePayment');
+        $this->app->instance(FirebaseService::class, $firebase);
 
-        $this->postJson('/api/webhooks/mayar/wrong-secret', [
-            'event' => ['received' => 'payment.received'],
-        ])->assertNotFound();
+        $midtrans = Mockery::mock(MidtransService::class)->makePartial();
+        $midtrans->shouldReceive('getStatus')
+            ->once()
+            ->andReturn([
+                'id' => 'booking-123',
+                'status' => 'pending',
+                'amount' => 75000,
+                'transaction_status' => 'pending',
+            ]);
+        $this->app->instance(MidtransService::class, $midtrans);
+
+        $this->postJson('/api/webhooks/midtrans', $payload)
+            ->assertOk()
+            ->assertJsonPath('status', 'ignored');
+    }
+
+    public function test_midtrans_webhook_rejects_an_invalid_signature(): void
+    {
+        $payload = $this->midtransNotification('booking-123', '200', '75000.00');
+        $payload['signature_key'] = str_repeat('0', 128);
+
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldNotReceive('completePayment');
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $this->postJson('/api/webhooks/midtrans', $payload)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'invalid_signature');
+    }
+
+    public function test_midtrans_webhook_rejects_a_tampered_amount(): void
+    {
+        $payload = $this->midtransNotification('booking-123', '200', '75000.00');
+        $payload['gross_amount'] = '1000.00';
+
+        $this->postJson('/api/webhooks/midtrans', $payload)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'invalid_signature');
+    }
+
+    public function test_midtrans_webhook_asks_for_a_retry_when_the_provider_is_unreachable(): void
+    {
+        $payload = $this->midtransNotification('booking-123', '200', '75000.00');
+        $firebase = Mockery::mock(FirebaseService::class);
+        $firebase->shouldNotReceive('completePayment');
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $midtrans = Mockery::mock(MidtransService::class)->makePartial();
+        $midtrans->shouldReceive('getStatus')
+            ->once()
+            ->andThrow(new MidtransApiException('down', 'connection'));
+        $this->app->instance(MidtransService::class, $midtrans);
+
+        $this->postJson('/api/webhooks/midtrans', $payload)
+            ->assertServiceUnavailable()
+            ->assertJsonPath('code', 'payment_unavailable');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function midtransNotification(string $orderId, string $statusCode, string $grossAmount): array
+    {
+        config(['services.midtrans.server_key' => 'SB-Mid-server-test']);
+
+        return [
+            'order_id' => $orderId,
+            'status_code' => $statusCode,
+            'gross_amount' => $grossAmount,
+            'transaction_status' => 'settlement',
+            'signature_key' => hash(
+                'sha512',
+                $orderId.$statusCode.$grossAmount.'SB-Mid-server-test',
+            ),
+        ];
     }
 
     /**

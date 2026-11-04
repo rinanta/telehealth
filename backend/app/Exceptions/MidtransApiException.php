@@ -5,7 +5,7 @@ namespace App\Exceptions;
 use RuntimeException;
 use Throwable;
 
-class MayarApiException extends RuntimeException
+class MidtransApiException extends RuntimeException
 {
     public function __construct(
         string $message,

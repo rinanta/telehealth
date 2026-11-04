@@ -10,10 +10,10 @@ Aplikasi telehealth edukasi kehamilan dan konsultasi chat bidan | MVP Android
 | Tanggal           | 2 November 2026                                                                                   |
 | Status            | Disetujui sebagai baseline perencanaan dan implementasi MVP                                      |
 | Platform          | Satu APK Flutter untuk pasien dan bidan                                                           |
-| Stack             | Flutter (Dart) \| Laravel (PHP) \| Firebase Auth + Cloud Firestore \| Gemini API \| Mayar Sandbox |
-| Tim               | Fida: PM, UI/UX, QA, dokumentasi; Rinanta: frontend Flutter; Iqbal: Laravel, Firebase, AI, Mayar  |
+| Stack             | Flutter (Dart) \| Laravel (PHP) \| Firebase Auth + Cloud Firestore \| Gemini API \| Midtrans Sandbox |
+| Tim               | Fida: PM, UI/UX, QA, dokumentasi; Rinanta: frontend Flutter; Iqbal: Laravel, Firebase, AI, Midtrans  |
 
-Keputusan inti: tidak ada video call. Chat AI gratis. Konsultasi bidan dilakukan melalui chat teks selama 30 menit dengan pembayaran melalui Mayar Sandbox. Hasil konsultasi disusun oleh bidan, bukan AI.
+Keputusan inti: tidak ada video call. Chat AI gratis. Konsultasi bidan dilakukan melalui chat teks selama 30 menit dengan pembayaran melalui Midtrans Sandbox. Hasil konsultasi disusun oleh bidan, bukan AI.
 
 # 1. Ringkasan Produk
 
@@ -22,7 +22,7 @@ TeleBunda AI membantu pasien mendapatkan informasi awal seputar kehamilan melalu
 # 2. Sasaran, Ruang Lingkup, dan Batasan
 
 - Sasaran MVP: demo end-to-end untuk 1 pasien dan 1 bidan, dengan minimal 1 transaksi sandbox dan 1 sesi konsultasi selesai.
-- Dalam lingkup: register/login, role, dashboard pasien/bidan, chatbot Gemini, profil & jadwal bidan, booking, Mayar Sandbox, chat teks, timer sesi 30 menit, catatan hasil, dan riwayat.
+- Dalam lingkup: register/login, role, dashboard pasien/bidan, chatbot Gemini, profil & jadwal bidan, booking, Midtrans Sandbox, chat teks, timer sesi 30 menit, catatan hasil, dan riwayat.
 - Di luar lingkup MVP: video/audio call, pengiriman obat, e-resep formal, admin web, konsultasi 24 jam, sistem rekam medis rumah sakit, dan transaksi uang sungguhan.
 - Keselamatan: AI hanya edukasi, bukan diagnosis atau pengganti pemeriksaan. Keluhan darurat harus diarahkan ke layanan medis segera; bidan menyarankan tindak lanjut sesuai kompetensi dan kewenangan.
 
@@ -45,8 +45,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 3. Dashboard Pasien menampilkan tombol "Chat AI Gratis", "Cari Bidan", booking terdekat dan riwayat.
 4. Chat AI (opsional): tanya jawab edukasi kehamilan; tersedia CTA "Konsultasi Bidan".
 5. Pilih bidan, lihat profil dan slot tersedia, tentukan tanggal/jam, isi keluhan singkat, konfirmasi booking.
-6. Backend menahan slot sementara dan membuat booking awaiting_payment; pasien mengisi nomor ponsel, lalu Laravel membuat invoice Mayar Sandbox dengan tarif dan waktu kedaluwarsa dari data server.
-7. Pasien membayar melalui tautan checkout Mayar. Notifikasi `payment.received` hanya menjadi pemicu; Laravel mengambil status invoice langsung dari API Mayar dan mencocokkan invoice serta nominal sebelum mengubah booking menjadi paid_pending_midwife.
+6. Backend menahan slot sementara dan membuat booking awaiting_payment; pasien mengisi nomor ponsel, lalu Laravel membuat transaksi Midtrans Snap (Sandbox) dengan tarif dan waktu kedaluwarsa dari data server.
+7. Pasien membayar melalui halaman Snap Midtrans (`redirect_url`). Notifikasi HTTP Midtrans diverifikasi dengan `signature_key`; Laravel lalu mengambil status transaksi langsung dari Get Status API Midtrans dan mencocokkan order serta nominal sebelum mengubah booking menjadi paid_pending_midwife.
 8. Bidan mengonfirmasi booking; status menjadi confirmed. Pasien melihat jadwal dan tombol chat terkunci hingga sesi dibuka.
 9. Pada waktu sesi, bidan memulai sesi dan pasien masuk chat; timer konsultasi 30 menit dihitung oleh server berdasarkan started_at.
 10. Bidan menulis ringkasan keluhan, saran, rekomendasi vitamin/suplemen jika sesuai kewenangan dan diperlukan, tindak lanjut/rujukan; bidan menekan Selesaikan.
@@ -75,7 +75,7 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 | Timer                   | Notifikasi pada 5 menit tersisa. Saat ends_at tercapai, backend menolak pesan baru; sesi tetap perlu difinalisasi bidan dengan hasil konsultasi. |
 | Chat                    | Hanya peserta booking paid+confirmed+active yang boleh mengirim pesan sebelum ends_at; setelah completed hanya baca. Pada akhir timer, pengiriman pesan dikunci meskipun bidan belum menyimpan hasil. |
 | Hasil                   | Bidan wajib mengisi ringkasan dan tindak lanjut sebelum finalisasi; anjuran suplemen opsional                                               |
-| Penolakan setelah bayar | Tidak boleh menghilangkan transaksi; lakukan pengaturan jadwal ulang/refund sesuai dukungan Mayar dan kebijakan yang ditentukan             |
+| Penolakan setelah bayar | Tidak boleh menghilangkan transaksi; lakukan pengaturan jadwal ulang/refund sesuai dukungan Midtrans dan kebijakan yang ditentukan             |
 
 # 6. Kebutuhan Fungsional (Acceptance Criteria)
 
@@ -87,8 +87,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 | FR-04 | Chat AI menerima pesan dan respons edukasi, menampilkan disclaimer dan penanganan error.        |
 | FR-05 | Daftar bidan dan jadwal hanya menampilkan slot valid yang tersedia.                             |
 | FR-06 | Booking membuat hold atomik; satu slot tidak bisa terjual ke dua pasien.                        |
-| FR-07 | Mayar Sandbox invoice dibuat oleh Laravel dengan tarif booking dari server; Flutter hanya membuka tautan checkout dan tidak dapat menandai pembayaran lunas. |
-| FR-08 | Notifikasi `payment.received` diterima di endpoint webhook beralamat rahasia; Laravel memverifikasi invoice dan nominal langsung ke Mayar. Pemrosesan idempoten; pembayaran setelah hold dilepas memerlukan rekonsiliasi manual. |
+| FR-07 | Transaksi Midtrans Snap (Sandbox) dibuat oleh Laravel dengan tarif booking dari server; `order_id` = ID booking; Flutter hanya membuka tautan checkout dan tidak dapat menandai pembayaran lunas. |
+| FR-08 | Notifikasi HTTP Midtrans diterima di `POST /api/webhooks/midtrans`; Laravel memvalidasi `signature_key` (SHA-512) lalu memverifikasi status dan nominal langsung ke Midtrans. Pemrosesan idempoten; pembayaran setelah hold dilepas memerlukan rekonsiliasi manual. |
 | FR-09 | Bidan hanya melihat dan menerima booking atas namanya yang sudah dibayar.                       |
 | FR-10 | Chat pasien-bidan hanya bisa saat sesi aktif; kedua perangkat menyinkronkan pesan melalui polling API maksimal setiap 4 detik. |
 | FR-11 | Timer 30 menit dan kunci pesan dikontrol server, tidak bergantung jam HP.                       |
@@ -101,9 +101,9 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 **Keputusan teknis implementasi MVP (disepakati tim):**
 
 - **Autentikasi dan role:** Flutter membuat akun/melakukan login melalui Firebase Authentication. Setiap permintaan API mengirim `Authorization: Bearer <Firebase ID token>`; Laravel memverifikasi token dan membaca profil serta role tepercaya dari Firestore. Endpoint registrasi menerima pasien atau permohonan bidan; backend menetapkan role/status yang diizinkan dan tidak menerima `verified` atau role istimewa dari klien. Hanya proses admin tepercaya yang dapat memverifikasi bidan.
-- **Hold dan pembayaran terlambat:** `POST /api/bookings` menjalankan pembacaan slot, pemeriksaan bidan aktif/terverifikasi dan tarif, pembuatan booking `awaiting_payment`, serta perubahan slot menjadi `held` dalam satu transaksi Firestore. Jika belum ada pembayaran terverifikasi saat hold habis, scheduler backend (wajib dijalankan melalui `php artisan schedule:run` setiap menit atau proses `php artisan schedule:work`) menandai booking `expired` dan melepas slot dalam transaksi yang memeriksa kembali kepemilikan hold. Jika notifikasi pembayaran valid tiba setelah slot dilepas/booking expired, jangan mengambil slot yang mungkin sudah dipesan orang lain; tandai untuk rekonsiliasi dan penanganan manual/refund sandbox sesuai dukungan Mayar. Webhook diproses idempoten.
+- **Hold dan pembayaran terlambat:** `POST /api/bookings` menjalankan pembacaan slot, pemeriksaan bidan aktif/terverifikasi dan tarif, pembuatan booking `awaiting_payment`, serta perubahan slot menjadi `held` dalam satu transaksi Firestore. Jika belum ada pembayaran terverifikasi saat hold habis, scheduler backend (wajib dijalankan melalui `php artisan schedule:run` setiap menit atau proses `php artisan schedule:work`) menandai booking `expired` dan melepas slot dalam transaksi yang memeriksa kembali kepemilikan hold. Jika notifikasi pembayaran valid tiba setelah slot dilepas/booking expired, jangan mengambil slot yang mungkin sudah dipesan orang lain; tandai untuk rekonsiliasi dan penanganan manual/refund sandbox sesuai dukungan Midtrans. Webhook diproses idempoten.
 - **Tarif booking:** proses admin tepercaya mengisi `midwives/{uid}.consultation_fee` sebagai integer Rupiah positif. Field ini boleh ditampilkan di katalog; backend selalu membaca ulang nilainya di dalam transaksi booking dan menyalinnya ke `bookings.amount`. Tarif dari request klien diabaikan. Bidan tanpa tarif valid tidak dapat dipesan sampai tarif diatur.
-- **Penolakan dan no-show setelah pembayaran:** utamakan penjadwalan ulang yang disetujui pasien. Jika tidak dapat dijadwalkan ulang, catat kasus untuk bantuan/refund sandbox secara manual, bergantung pada kemampuan provider; MVP tidak menjanjikan refund otomatis sebelum kemampuan Mayar dikonfirmasi. Tidak ada pembayaran uang sungguhan pada MVP.
+- **Penolakan dan no-show setelah pembayaran:** utamakan penjadwalan ulang yang disetujui pasien. Jika tidak dapat dijadwalkan ulang, catat kasus untuk bantuan/refund sandbox secara manual, bergantung pada kemampuan provider; MVP tidak menjanjikan refund otomatis sebelum kemampuan Midtrans dikonfirmasi. Tidak ada pembayaran uang sungguhan pada MVP.
 - **Waktu sesi:** bidan hanya dapat memulai pada/setelah waktu slot dan paling lambat 10 menit sesudahnya. Backend menetapkan `started_at` dan `ends_at = started_at + 30 menit`; waktu perangkat hanya untuk tampilan countdown. Setelah `ends_at`, backend menolak pesan baru, tetapi bidan tetap dapat menyimpan hasil untuk menutup sesi.
 - **Chat dan otorisasi:** Laravel memvalidasi identitas peserta, status booking, serta batas 30 menit pada setiap pengiriman; Flutter tidak mengakses koleksi chat secara langsung. Pesan disimpan pada koleksi top-level `messages` dan dibaca melalui API polling setiap 4 detik. `GET /api/bookings/{id}/messages` mengembalikan booking, riwayat pesan, dan `can_send`; endpoint mengizinkan peserta membaca sesi `active` atau `completed`. `POST /api/bookings/{id}/messages` hanya menerima teks dari peserta saat booking `active` dan waktu server masih dalam 30 menit. Setelah batas waktu, riwayat tetap dapat dibaca tetapi pengiriman ditolak.
 - **Privasi chat AI:** jangan menyimpan isi percakapan AI ke Firestore atau log server pada MVP; tampilkan percakapan hanya selama sesi aplikasi berjalan. Jangan mencatat teks keluhan/chat dalam log operasional. Retensi riwayat konsultasi bidan mengikuti kebutuhan hasil konsultasi dan akses terbatas sesuai role.
@@ -111,9 +111,9 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 
 Keputusan pada bagian ini menjadi baseline implementasi MVP. Untuk chat realtime, pesan ditulis melalui Laravel dan dibaca realtime dari Firestore; penulisan langsung dari klien bukan jalur implementasi MVP.
 
-Flutter (Android) -> Laravel REST API (otorisasi, aturan bisnis, Gemini, Mayar) -> Firebase Admin SDK/Firestore. Firebase Authentication melakukan autentikasi pengguna; Flutter mengirim Firebase ID token melalui Authorization: Bearer ke Laravel. Laravel memverifikasi token dan role tepercaya. Firestore menjadi sumber data utama untuk user, booking, slot, chat, hasil konsultasi dan transaksi. Untuk chat real-time, Flutter dapat memakai Firestore listener langsung dengan Security Rules ketat; tulis pesan hanya untuk peserta sesi aktif sesuai status yang dikendalikan Laravel, atau gunakan API Laravel untuk penulisan jika aturan keamanan lebih mudah dikontrol demikian.
+Flutter (Android) -> Laravel REST API (otorisasi, aturan bisnis, Gemini, Midtrans) -> Firebase Admin SDK/Firestore. Firebase Authentication melakukan autentikasi pengguna; Flutter mengirim Firebase ID token melalui Authorization: Bearer ke Laravel. Laravel memverifikasi token dan role tepercaya. Firestore menjadi sumber data utama untuk user, booking, slot, chat, hasil konsultasi dan transaksi. Untuk chat real-time, Flutter dapat memakai Firestore listener langsung dengan Security Rules ketat; tulis pesan hanya untuk peserta sesi aktif sesuai status yang dikendalikan Laravel, atau gunakan API Laravel untuk penulisan jika aturan keamanan lebih mudah dikontrol demikian.
 
-Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Composer, Firebase Admin SDK untuk PHP yang kompatibel, kredensial service account server, dan endpoint HTTPS yang dapat diakses webhook Mayar. Jangan memasukkan service account, API key Gemini, ataupun Mayar secret ke APK atau Git.
+Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Composer, Firebase Admin SDK untuk PHP yang kompatibel, kredensial service account server, dan endpoint HTTPS yang dapat diakses notifikasi Midtrans. Jangan memasukkan service account, API key Gemini, ataupun Midtrans Server Key ke APK atau Git.
 
 # 8. Struktur Koleksi Firestore (usulan awal)
 
@@ -130,7 +130,7 @@ Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Compos
 
 Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date; booking by status/hold_expires_at untuk pemrosesan hold kedaluwarsa; slots by midwife/date/status; messages by booking_id (single-field Firestore index). Gunakan timestamp UTC di database dan tampilkan WIB pada antarmuka.
 
-# 9. Kontrak API Laravel (rancangan, bukan endpoint resmi Mayar/Gemini)
+# 9. Kontrak API Laravel (rancangan, bukan endpoint resmi Midtrans/Gemini)
 
 | Method / Endpoint                     | Akses / Tindakan                                                        |
 | ------------------------------------- | ----------------------------------------------------------------------- |
@@ -141,19 +141,19 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | GET /api/midwife/bookings             | Bidan terverifikasi; daftar booking milik sendiri                      |
 | POST /api/bookings                    | Pasien; body `slot_id` dan `complaint`; buat booking `awaiting_payment` + hold atomik 15 menit. `amount` diambil backend dari tarif bidan, tidak diterima dari klien. |
 | GET /api/bookings/{id}                | Pasien pemilik booking; status dan data booking terbaru dari backend    |
-| POST /api/bookings/{id}/checkout      | Pasien; body nomor ponsel; buat invoice Mayar dari nominal booking di server |
-| POST /api/webhooks/mayar/{secret}     | Mayar; callback HTTPS dengan URL rahasia; invoice dan nominal selalu diverifikasi ulang melalui API Mayar |
+| POST /api/bookings/{id}/checkout      | Pasien; body nomor ponsel; buat transaksi Midtrans Snap dari nominal booking di server |
+| POST /api/webhooks/midtrans           | Midtrans; notifikasi HTTPS dengan `signature_key`; status dan nominal selalu diverifikasi ulang melalui Get Status API Midtrans |
 | POST /api/bookings/{id}/accept        | Bidan terverifikasi pemilik booking; konfirmasi transaksi atomik        |
-| POST /api/bookings/{id}/reject        | Bidan pemilik booking; alasan wajib; refund Mayar ditangani manual      |
+| POST /api/bookings/{id}/reject        | Bidan pemilik booking; alasan wajib; refund Midtrans ditangani manual      |
 | POST /api/bookings/{id}/start         | Bidan terverifikasi pemilik booking; mulai sesi pada/setelah jadwal     |
 | GET /api/bookings/{id}/messages       | Peserta; status sesi, kemampuan mengirim, dan riwayat pesan             |
 | POST /api/bookings/{id}/messages      | Peserta; backend memvalidasi sesi aktif dan batas 30 menit, lalu menulis pesan |
 | POST /api/ai/chat                     | Pasien; Laravel meneruskan permintaan ke Gemini                         |
 | GET /api/history                      | Pasien/bidan; hasil dan riwayat yang diizinkan                          |
 
-Endpoint Mayar sebenarnya, jenis pembayaran, response dan status harus mengikuti dokumentasi Mayar v2; tabel ini hanya kontrak API internal Laravel. Dokumentasi webhook Mayar yang digunakan tidak mendeskripsikan signature untuk diverifikasi, sehingga endpoint memakai URL rahasia yang disimpan di `MAYAR_WEBHOOK_SECRET` dan tidak mempercayai isi callback sebagai bukti pembayaran. Callback `payment.received` hanya memicu Laravel untuk mengambil detail invoice secara server-to-server. Endpoint checkout dan seluruh endpoint bisnis memerlukan autentikasi Firebase; endpoint webhook memerlukan URL rahasia dan verifikasi status langsung ke Mayar. Setiap endpoint memeriksa kepemilikan/role di backend, bukan hanya di UI.
+Endpoint Midtrans sebenarnya (Snap `POST /snap/v1/transactions`, Get Status `GET /v2/{order_id}/status`), metode pembayaran, response dan status harus mengikuti dokumentasi Midtrans; tabel ini hanya kontrak API internal Laravel. Notifikasi Midtrans membawa `signature_key = SHA512(order_id + status_code + gross_amount + ServerKey)`; endpoint menolak notifikasi dengan signature tidak cocok (403) dan tetap tidak mempercayai isi callback sebagai bukti pembayaran: status dan nominal diambil ulang dari Get Status API. Callback hanya memicu Laravel memproses `order_id` yang disebutkan. Endpoint checkout dan seluruh endpoint bisnis memerlukan autentikasi Firebase; endpoint webhook memerlukan signature valid dan verifikasi status langsung ke Midtrans. Setiap endpoint memeriksa kepemilikan/role di backend, bukan hanya di UI.
 
-Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `MAYAR_WEBHOOK_SECRET` di `backend/.env`; jangan menaruh API key di Flutter, Git, atau chat. Webhook Mayar harus menunjuk ke URL HTTPS publik yang berakhir dengan `/api/webhooks/mayar/{nilai-MAYAR_WEBHOOK_SECRET}`.
+Untuk konfigurasi lokal, isi `MIDTRANS_ENVIRONMENT=sandbox` dan `MIDTRANS_SERVER_KEY` (Server Key Sandbox, berawalan `SB-Mid-server-`) di `backend/.env`; jangan menaruh Server Key di Flutter, Git, atau chat. Di Midtrans Dashboard (Sandbox) → Settings → Configuration, isi Payment Notification URL dengan URL HTTPS publik `https://<domain-atau-tunnel>/api/webhooks/midtrans`.
 
 # 10. Daftar Layar dan Navigasi
 
@@ -166,7 +166,7 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 | UI-05      | Chat AI Kehamilan                                                | Pasien       |
 | UI-06      | Daftar & detail bidan                                            | Pasien       |
 | UI-07      | Pilih jadwal, isi keluhan, konfirmasi                            | Pasien       |
-| UI-08      | Checkout Mayar & status pembayaran                               | Pasien       |
+| UI-08      | Checkout Midtrans & status pembayaran                               | Pasien       |
 | UI-09      | Status booking & jadwal                                          | Pasien       |
 | UI-10      | Chat konsultasi (30 menit)                                       | Pasien/Bidan |
 | UI-11      | Hasil & riwayat konsultasi                                       | Pasien       |
@@ -187,7 +187,7 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 | 5\. Booking tanpa bayar      | Hold slot atomik, expiry, transisi booking dan proteksi double-book                                   | Dua permintaan bersamaan pada slot sama hanya menghasilkan satu hold |
 | 6\. Chat AI                  | Endpoint Gemini Laravel, prompt keselamatan, validasi/rate limit, tanpa penyimpanan chat MVP         | Jawaban edukasi, eskalasi red flag, dan state error provider teruji |
 | 7\. Konsultasi DEV           | Bypass paid hanya di environment DEV; start sesi, chat realtime, batas waktu server, hasil           | Demo pasien-bidan end-to-end; bypass tidak tersedia di staging/production |
-| 8\. Mayar Sandbox            | Checkout API, redirect, callback HTTPS, validasi webhook dan idempotensi                             | Pembayaran sandbox valid mengubah status sekali; callback ulang/terlambat ditangani |
+| 8\. Midtrans Sandbox            | Checkout API, redirect, callback HTTPS, validasi webhook dan idempotensi                             | Pembayaran sandbox valid mengubah status sekali; callback ulang/terlambat ditangani |
 | 9\. Integrasi final          | Hapus bypass paid DEV dan verifikasi akses per status/role                                            | Sesi hanya dimulai dari booking paid+confirmed          |
 | 10\. QA & demo               | Uji dua perangkat, jaringan buruk, timer, role, slot ganda, status pembayaran/no-show                | UAT Bagian 13 lulus; APK demo dan bukti pengujian tersedia |
 
@@ -197,7 +197,7 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fida     | PRD, desain UI dan prototype, sistem status/state, acceptance checklist, uji integrasi, laporan/PPT/video; serahkan file Figma dan flow ke Rinanta/Iqbal                        |
 | Rinanta  | Flutter page routes, Firebase Auth SDK, API client Bearer token, form, UI chat, listener, payment redirect, error handling, build APK                                           |
-| Iqbal    | Laravel APIs/middleware, Firestore collections & rules, seed bidan, booking atomik, Gemini server-side, Mayar sandbox checkout/webhook, timer server-side dan pengujian backend |
+| Iqbal    | Laravel APIs/middleware, Firestore collections & rules, seed bidan, booking atomik, Gemini server-side, Midtrans Sandbox checkout/webhook, timer server-side dan pengujian backend |
 
 # 13. Checklist Uji Penerimaan (UAT)
 
@@ -205,7 +205,7 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 - Pemilihan slot yang sama oleh dua pasien hanya menghasilkan satu booking yang valid.
 - Hold yang kedaluwarsa melepaskan slot; pembayaran valid yang datang terlambat tidak merebut kembali slot dan masuk rekonsiliasi.
 - Booking unpaid tidak muncul sebagai sesi yang dapat dimulai; pembayaran pending/gagal tidak membuka chat.
-- Mayar sandbox sukses setelah webhook valid mengubah status sekali, bahkan jika webhook berulang.
+- Midtrans Sandbox sukses setelah webhook valid mengubah status sekali, bahkan jika webhook berulang.
 - Bidan mengonfirmasi booking; pasien memperoleh status confirmed dan jadwal.
 - Dua perangkat saling menerima pesan; pengguna ketiga tidak dapat membaca pesan orang lain.
 - Penulisan langsung ke Firestore oleh klien ditolak; API menolak pesan dari non-peserta atau setelah ends_at.
@@ -219,7 +219,7 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 
 | Risiko                                             | Mitigasi                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Mayar webhook tidak menyebut signature pada dokumentasi yang digunakan | Rahasiakan URL webhook dan verifikasi invoice langsung via API Mayar; jangan mempercayai callback sebagai bukti bayar |
+| Notifikasi Midtrans dapat terlambat/tidak sampai (localhost, tunnel mati) | Verifikasi `signature_key` + Get Status API; pasien dapat menekan "cek status booking"; transaksi tetap dapat direkonsiliasi manual dari dashboard Midtrans |
 | Laravel di localhost tidak menerima webhook publik | Gunakan endpoint staging HTTPS/tunnel aman untuk pengujian webhook                              |
 | Firebase Security Rules lemah                      | Gunakan pembatasan role/peserta dan uji akses silang dengan emulator; jangan mengandalkan UI    |
 | Duplikasi slot & webhook                           | Gunakan transaksi/lock Firestore dan idempotency key                                            |
@@ -229,12 +229,12 @@ Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `
 
 # 15. Definition of Done dan Target Demo
 
-MVP dinyatakan selesai jika dua akun berbeda berhasil menjalankan alur pasien booking -> pembayaran Mayar Sandbox terverifikasi -> bidan menerima -> chat real-time 30 menit -> bidan menyelesaikan catatan -> pasien melihat hasil/riwayat. Semua status ditampilkan jelas; pengujian keamanan role, status payment, dan timer lulus. APK dapat dipasang pada Android dan Laravel dapat diakses oleh perangkat demo.
+MVP dinyatakan selesai jika dua akun berbeda berhasil menjalankan alur pasien booking -> pembayaran Midtrans Sandbox terverifikasi -> bidan menerima -> chat real-time 30 menit -> bidan menyelesaikan catatan -> pasien melihat hasil/riwayat. Semua status ditampilkan jelas; pengujian keamanan role, status payment, dan timer lulus. APK dapat dipasang pada Android dan Laravel dapat diakses oleh perangkat demo.
 
 # 16. Referensi Teknis dan Catatan Verifikasi
 
-- Mayar API v2: <https://docs.mayar.id/api-reference-v2/introduction.md>, <https://docs.mayar.id/api-reference-v2/invoice/create.md>, <https://docs.mayar.id/api-reference-v2/invoice/detail.md>; gunakan host Sandbox `https://api.mayar.club/hl/v2` dan Production `https://api.mayar.id/hl/v2`, dengan API key pada header `Authorization: Bearer <API_KEY>` sesuai integrasi resmi Mayar saat ini (<https://github.com/mayarid/mayar-cli>).
-- Mayar webhook: <https://docs.mayar.id/integration/webhook.md>; dokumentasi yang digunakan tidak mendeskripsikan signature callback.
+- Midtrans Snap API: <https://docs.midtrans.com/reference/create-checkout-token-api>; gunakan host Sandbox `https://app.sandbox.midtrans.com` dan Production `https://app.midtrans.com`, autentikasi HTTP Basic dengan Server Key sebagai username dan password kosong.
+- Midtrans notifikasi & Get Status: <https://docs.midtrans.com/reference/handle-notifications>, <https://docs.midtrans.com/reference/get-transaction-status>; Core API Sandbox `https://api.sandbox.midtrans.com`, Production `https://api.midtrans.com`.
 - Google Gemini API key: <https://ai.google.dev/gemini-api/docs/api-key> ; simpan credential di Laravel, bukan APK.
 - Firebase: <https://firebase.google.com/docs/auth> dan <https://firebase.google.com/docs/firestore> ; implementasikan Rules dan indeks berdasarkan skema.
 - Laravel: <https://laravel.com/docs> ; gunakan framework versi stabil yang kompatibel dengan PHP server tim.

@@ -319,19 +319,9 @@ class FirebaseService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @param  array{id: string, transaction_id: string, link: string}  $invoice  id = Midtrans order_id (booking ID), transaction_id = Snap token, link = Snap redirect URL
      */
-    public function getPendingMayarPayments(): array
-    {
-        return $this->runFirestoreQuery('payments', [
-            ['field' => 'status', 'value' => ['stringValue' => 'pending']],
-        ]);
-    }
-
-    /**
-     * @param  array{id: string, transaction_id: string, link: string}  $invoice
-     */
-    public function attachMayarInvoice(
+    public function attachPaymentSession(
         string $bookingId,
         string $patientId,
         int $amount,
@@ -376,8 +366,8 @@ class FirebaseService
                 'update' => [
                     'name' => $this->documentName('payments', $invoice['id']),
                     'fields' => [
-                        'provider' => ['stringValue' => 'mayar'],
-                        'environment' => ['stringValue' => config('services.mayar.environment', 'sandbox')],
+                        'provider' => ['stringValue' => 'midtrans'],
+                        'environment' => ['stringValue' => config('services.midtrans.environment', 'sandbox')],
                         'invoice_id' => ['stringValue' => $invoice['id']],
                         'transaction_id' => ['stringValue' => $invoice['transaction_id']],
                         'booking_id' => ['stringValue' => $bookingId],
@@ -420,15 +410,16 @@ class FirebaseService
     }
 
     /**
-     * @param  array<string, mixed>  $invoice
+     * @param  array{id: string, status: string, amount: int}  $invoice  verified status from MidtransService::getStatus()
      */
-    public function completeMayarPayment(string $invoiceId, array $invoice): string
+    public function completePayment(string $invoiceId, array $invoice): string
     {
         $transaction = $this->beginFirestoreTransaction();
         $payment = $this->getDocumentInTransaction('payments', $invoiceId, $transaction);
 
         if (
             $payment === null
+            || ($payment['provider'] ?? null) !== 'midtrans'
             || ($payment['invoice_id'] ?? null) !== $invoiceId
             || ($invoice['id'] ?? null) !== $invoiceId
             || ($invoice['status'] ?? null) !== 'paid'

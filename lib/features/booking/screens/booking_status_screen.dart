@@ -140,7 +140,7 @@ class BookingStatusScreen extends ConsumerWidget {
                   ),
                   _buildStepDivider(true),
                   _buildStepItem(
-                    title: '2. Pembayaran Mayar Sandbox',
+                    title: '2. Pembayaran Midtrans Sandbox',
                     subtitle: booking.isAwaitingPayment
                         ? 'Menunggu pembayaran di sandbox gateway'
                         : 'Pembayaran terverifikasi server',
@@ -213,8 +213,8 @@ class BookingStatusScreen extends ConsumerWidget {
               AppButton(
                 label: 'Lanjutkan Pembayaran Sandbox',
                 icon: Icons.payment,
-                backgroundColor: AppColors.mayarBrand,
-                onPressed: () => context.push('/mayar-checkout/${booking.id}'),
+                backgroundColor: AppColors.paymentAccent,
+                onPressed: () => context.push('/payment-checkout/${booking.id}'),
               )
             else if (booking.isConfirmed)
               Column(
@@ -600,8 +600,8 @@ class _ServerBookingHoldStatusState
               AppButton(
                 label: 'Lanjutkan Pembayaran',
                 icon: Icons.payment,
-                backgroundColor: AppColors.mayarBrand,
-                onPressed: () => context.push('/mayar-checkout/${booking.id}'),
+                backgroundColor: AppColors.paymentAccent,
+                onPressed: () => context.push('/payment-checkout/${booking.id}'),
               ),
             ],
           ],
@@ -640,7 +640,7 @@ class _ServerBookingHoldStatusState
   String _bookingStatusMessage(String status) {
     return switch (status) {
       'awaiting_payment' =>
-        'Booking menunggu pembayaran. Ketuk Lanjutkan Pembayaran untuk membuka halaman Mayar; status berubah setelah server memverifikasi pembayaran.',
+        'Booking menunggu pembayaran. Ketuk Lanjutkan Pembayaran untuk membuka halaman Midtrans; status berubah setelah server memverifikasi pembayaran.',
       'paid_pending_midwife' =>
         'Pembayaran telah diverifikasi. Menunggu konfirmasi bidan.',
       'confirmed' => 'Booking dikonfirmasi. Jadwal konsultasi Anda tercatat.',

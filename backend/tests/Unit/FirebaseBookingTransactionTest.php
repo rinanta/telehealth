@@ -515,7 +515,7 @@ class FirebaseBookingTransactionTest extends TestCase
         });
     }
 
-    public function test_attach_mayar_invoice_saves_payment_and_checkout_link_atomically(): void
+    public function test_attach_payment_session_saves_payment_and_checkout_link_atomically(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
         Http::preventStrayRequests();
@@ -544,15 +544,15 @@ class FirebaseBookingTransactionTest extends TestCase
             '*:commit' => Http::response(['writeResults' => []]),
         ]);
 
-        $saved = $this->firebase()->attachMayarInvoice(
+        $saved = $this->firebase()->attachPaymentSession(
             'booking-123',
             'patient-123',
             75000,
             '2026-11-04T04:15:00Z',
             [
                 'id' => 'invoice-123',
-                'transaction_id' => 'transaction-123',
-                'link' => 'https://testingmayar.myr.id/invoices/test',
+                'transaction_id' => 'snap-token-123',
+                'link' => 'https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token-123',
             ],
         );
 
@@ -568,16 +568,17 @@ class FirebaseBookingTransactionTest extends TestCase
                 && ($writes[0]['update']['name'] ?? null)
                     === 'projects/test-project/databases/(default)/documents/payments/invoice-123'
                 && ($writes[0]['update']['fields']['amount']['integerValue'] ?? null) === '75000'
+                && ($writes[0]['update']['fields']['provider']['stringValue'] ?? null) === 'midtrans'
                 && ($writes[0]['update']['fields']['environment']['stringValue'] ?? null) === 'sandbox'
                 && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'pending'
                 && ($writes[0]['currentDocument']['exists'] ?? null) === false
                 && ($writes[1]['update']['fields']['payment_id']['stringValue'] ?? null) === 'invoice-123'
                 && ($writes[1]['update']['fields']['checkout_url']['stringValue'] ?? null)
-                    === 'https://testingmayar.myr.id/invoices/test';
+                    === 'https://app.sandbox.midtrans.com/snap/v4/redirection/snap-token-123';
         });
     }
 
-    public function test_verified_mayar_payment_books_the_slot_and_updates_booking_atomically(): void
+    public function test_verified_payment_books_the_slot_and_updates_booking_atomically(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
         Http::preventStrayRequests();
@@ -586,6 +587,7 @@ class FirebaseBookingTransactionTest extends TestCase
             '*documents/payments/invoice-123?*' => Http::response($this->document(
                 'payments/invoice-123',
                 [
+                    'provider' => ['stringValue' => 'midtrans'],
                     'invoice_id' => ['stringValue' => 'invoice-123'],
                     'booking_id' => ['stringValue' => 'booking-123'],
                     'amount' => ['integerValue' => '75000'],
@@ -612,10 +614,11 @@ class FirebaseBookingTransactionTest extends TestCase
             '*:commit' => Http::response(['writeResults' => []]),
         ]);
 
-        $result = $this->firebase()->completeMayarPayment('invoice-123', [
+        $result = $this->firebase()->completePayment('invoice-123', [
             'id' => 'invoice-123',
-            'amount' => 75000,
             'status' => 'paid',
+            'amount' => 75000,
+            'transaction_status' => 'settlement',
         ]);
 
         $this->assertSame('paid', $result);
@@ -647,6 +650,7 @@ class FirebaseBookingTransactionTest extends TestCase
             '*documents/payments/invoice-123?*' => Http::response($this->document(
                 'payments/invoice-123',
                 [
+                    'provider' => ['stringValue' => 'midtrans'],
                     'invoice_id' => ['stringValue' => 'invoice-123'],
                     'booking_id' => ['stringValue' => 'booking-123'],
                     'amount' => ['integerValue' => '75000'],
@@ -669,10 +673,11 @@ class FirebaseBookingTransactionTest extends TestCase
             '*:commit' => Http::response(['writeResults' => []]),
         ]);
 
-        $result = $this->firebase()->completeMayarPayment('invoice-123', [
+        $result = $this->firebase()->completePayment('invoice-123', [
             'id' => 'invoice-123',
-            'amount' => 75000,
             'status' => 'paid',
+            'amount' => 75000,
+            'transaction_status' => 'settlement',
         ]);
 
         $this->assertSame('reconciliation_required', $result);
@@ -688,6 +693,34 @@ class FirebaseBookingTransactionTest extends TestCase
                 && ($writes[0]['update']['fields']['status']['stringValue'] ?? null)
                     === 'paid_requires_reconciliation';
         });
+    }
+
+    public function test_payment_from_another_provider_is_never_completed(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/payments/invoice-123?*' => Http::response($this->document(
+                'payments/invoice-123',
+                [
+                    'provider' => ['stringValue' => 'legacy-provider'],
+                    'invoice_id' => ['stringValue' => 'invoice-123'],
+                    'booking_id' => ['stringValue' => 'booking-123'],
+                    'amount' => ['integerValue' => '75000'],
+                    'status' => ['stringValue' => 'pending'],
+                ],
+            )),
+        ]);
+
+        $result = $this->firebase()->completePayment('invoice-123', [
+            'id' => 'invoice-123',
+            'status' => 'paid',
+            'amount' => 75000,
+            'transaction_status' => 'settlement',
+        ]);
+
+        $this->assertSame('unmatched', $result);
     }
 
     /**

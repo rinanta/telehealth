@@ -4,7 +4,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../models/booking_model.dart';
 import '../models/booking_hold_model.dart';
-import '../models/mayar_checkout_model.dart';
+import '../models/payment_checkout_model.dart';
 import '../models/consultation_result_model.dart';
 import '../models/midwife_model.dart';
 import '../models/slot_model.dart';
@@ -38,7 +38,7 @@ class BookingRepository {
           'Sering pusing ringan di pagi hari dan kram perut sesekali saat bangun tidur.',
       amount: 50000,
       status: 'completed',
-      paymentId: 'mayar_pay_9981',
+      paymentId: 'midtrans_pay_9981',
       consultationStartedAt: now.subtract(const Duration(days: 3, minutes: 40)),
       consultationCompletedAt: now.subtract(
         const Duration(days: 3, minutes: 10),
@@ -78,8 +78,8 @@ class BookingRepository {
           'Perut terasa kencang saat lelah beraktivitas kantor, ingin konsultasi persiapan nutrisi trimester 3.',
       amount: 50000,
       status: 'paid_pending_midwife',
-      paymentId: 'mayar_sandbox_pay_7721',
-      checkoutUrl: 'https://sandbox.mayar.id/checkout/telebunda-demo-7721',
+      paymentId: 'midtrans_sandbox_pay_7721',
+      checkoutUrl: 'https://app.sandbox.midtrans.com/snap/v4/redirection/telebunda-demo-7721',
       createdAt: now.subtract(const Duration(minutes: 15)),
     );
     _bookings.add(pendingMidwifeBooking);
@@ -204,7 +204,7 @@ class BookingRepository {
     await apiClient.post(ApiEndpoints.midwifeBookingStart(bookingId));
   }
 
-  Future<MayarCheckout> createMayarCheckout({
+  Future<PaymentCheckout> createPaymentCheckout({
     required String bookingId,
     required String mobile,
   }) async {
@@ -224,7 +224,7 @@ class BookingRepository {
       );
     }
 
-    return MayarCheckout.fromJson(
+    return PaymentCheckout.fromJson(
       Map<String, dynamic>.from(payload['data'] as Map),
     );
   }
@@ -244,9 +244,9 @@ class BookingRepository {
     await Future.delayed(const Duration(milliseconds: 600));
 
     final bookingId = 'book_${_uuid.v4().substring(0, 8)}';
-    final paymentId = 'mayar_sb_${_uuid.v4().substring(0, 8)}';
+    final paymentId = 'midtrans_sb_${_uuid.v4().substring(0, 8)}';
     final checkoutUrl =
-        'https://sandbox.mayar.id/checkout/telebunda-$bookingId';
+        'https://app.sandbox.midtrans.com/snap/v4/redirection/telebunda-$bookingId';
 
     final booking = Booking(
       id: bookingId,
