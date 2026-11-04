@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'mayar' => [
+        'api_key' => env('MAYAR_API_KEY'),
+        'environment' => env('MAYAR_ENVIRONMENT', 'sandbox'),
+        'webhook_secret' => env('MAYAR_WEBHOOK_SECRET'),
+    ],
+
 ];

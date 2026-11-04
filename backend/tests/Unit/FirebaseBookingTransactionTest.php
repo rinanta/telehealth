@@ -155,8 +155,13 @@ class FirebaseBookingTransactionTest extends TestCase
             '*documents/bookings/booking-old?*' => Http::response($this->document('bookings/booking-old', [
                 'slot_id' => ['stringValue' => 'slot-123'],
                 'status' => ['stringValue' => 'awaiting_payment'],
+                'payment_id' => ['stringValue' => 'invoice-old'],
                 'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
             ])),
+            '*documents/payments/invoice-old?*' => Http::response($this->document(
+                'payments/invoice-old',
+                ['status' => ['stringValue' => 'pending']],
+            )),
             '*documents/midwives/midwife-123?*' => Http::response($this->document('midwives/midwife-123', [
                 'active' => ['booleanValue' => true],
                 'verification_status' => ['stringValue' => 'verified'],
@@ -178,10 +183,12 @@ class FirebaseBookingTransactionTest extends TestCase
 
             $writes = $request->data()['writes'] ?? [];
 
-            return count($writes) === 3
+            return count($writes) === 4
                 && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'held'
                 && ($writes[1]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
-                && ($writes[2]['update']['fields']['status']['stringValue'] ?? null) === 'awaiting_payment';
+                && ($writes[2]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
+                && str_ends_with($writes[2]['update']['name'] ?? '', '/payments/invoice-old')
+                && ($writes[3]['update']['fields']['status']['stringValue'] ?? null) === 'awaiting_payment';
         });
     }
 
@@ -229,6 +236,7 @@ class FirebaseBookingTransactionTest extends TestCase
             '*documents/bookings/booking-123?*' => Http::response($this->document('bookings/booking-123', [
                 'slot_id' => ['stringValue' => 'slot-123'],
                 'status' => ['stringValue' => 'awaiting_payment'],
+                'payment_id' => ['stringValue' => 'invoice-123'],
                 'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
             ])),
             '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
@@ -236,6 +244,10 @@ class FirebaseBookingTransactionTest extends TestCase
                 'hold_booking_id' => ['stringValue' => 'booking-123'],
                 'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
             ])),
+            '*documents/payments/invoice-123?*' => Http::response($this->document(
+                'payments/invoice-123',
+                ['status' => ['stringValue' => 'pending']],
+            )),
             '*:commit' => Http::response(['writeResults' => [], 'commitTime' => '2026-11-04T04:00:00Z']),
         ]);
 
@@ -249,11 +261,13 @@ class FirebaseBookingTransactionTest extends TestCase
 
             $writes = $request->data()['writes'] ?? [];
 
-            return count($writes) === 2
+            return count($writes) === 3
                 && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
-                && ($writes[1]['update']['fields']['status']['stringValue'] ?? null) === 'available'
-                && in_array('hold_booking_id', $writes[1]['updateMask']['fieldPaths'] ?? [], true)
-                && ! array_key_exists('hold_booking_id', $writes[1]['update']['fields'] ?? []);
+                && ($writes[1]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
+                && str_ends_with($writes[1]['update']['name'] ?? '', '/payments/invoice-123')
+                && ($writes[2]['update']['fields']['status']['stringValue'] ?? null) === 'available'
+                && in_array('hold_booking_id', $writes[2]['updateMask']['fieldPaths'] ?? [], true)
+                && ! array_key_exists('hold_booking_id', $writes[2]['update']['fields'] ?? []);
         });
     }
 
@@ -278,6 +292,181 @@ class FirebaseBookingTransactionTest extends TestCase
                 && ($filters[0]['fieldFilter']['value']['stringValue'] ?? null) === 'awaiting_payment'
                 && ($filters[1]['fieldFilter']['field']['fieldPath'] ?? null) === 'hold_expires_at'
                 && ($filters[1]['fieldFilter']['op'] ?? null) === 'LESS_THAN_OR_EQUAL';
+        });
+    }
+
+    public function test_attach_mayar_invoice_saves_payment_and_checkout_link_atomically(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'patient_id' => ['stringValue' => 'patient-123'],
+                    'slot_id' => ['stringValue' => 'slot-123'],
+                    'status' => ['stringValue' => 'awaiting_payment'],
+                    'payment_id' => ['nullValue' => null],
+                    'amount' => ['integerValue' => '75000'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*documents/slots/slot-123?*' => Http::response($this->document(
+                'slots/slot-123',
+                [
+                    'status' => ['stringValue' => 'held'],
+                    'hold_booking_id' => ['stringValue' => 'booking-123'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*documents/payments/invoice-123?*' => Http::response([], 404),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $saved = $this->firebase()->attachMayarInvoice(
+            'booking-123',
+            'patient-123',
+            75000,
+            '2026-11-04T04:15:00Z',
+            [
+                'id' => 'invoice-123',
+                'transaction_id' => 'transaction-123',
+                'link' => 'https://testingmayar.myr.id/invoices/test',
+            ],
+        );
+
+        $this->assertTrue($saved);
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+
+            return count($writes) === 2
+                && ($writes[0]['update']['name'] ?? null)
+                    === 'projects/test-project/databases/(default)/documents/payments/invoice-123'
+                && ($writes[0]['update']['fields']['amount']['integerValue'] ?? null) === '75000'
+                && ($writes[0]['update']['fields']['environment']['stringValue'] ?? null) === 'sandbox'
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'pending'
+                && ($writes[0]['currentDocument']['exists'] ?? null) === false
+                && ($writes[1]['update']['fields']['payment_id']['stringValue'] ?? null) === 'invoice-123'
+                && ($writes[1]['update']['fields']['checkout_url']['stringValue'] ?? null)
+                    === 'https://testingmayar.myr.id/invoices/test';
+        });
+    }
+
+    public function test_verified_mayar_payment_books_the_slot_and_updates_booking_atomically(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/payments/invoice-123?*' => Http::response($this->document(
+                'payments/invoice-123',
+                [
+                    'invoice_id' => ['stringValue' => 'invoice-123'],
+                    'booking_id' => ['stringValue' => 'booking-123'],
+                    'amount' => ['integerValue' => '75000'],
+                    'status' => ['stringValue' => 'pending'],
+                ],
+            )),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'payment_id' => ['stringValue' => 'invoice-123'],
+                    'slot_id' => ['stringValue' => 'slot-123'],
+                    'status' => ['stringValue' => 'awaiting_payment'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*documents/slots/slot-123?*' => Http::response($this->document(
+                'slots/slot-123',
+                [
+                    'status' => ['stringValue' => 'held'],
+                    'hold_booking_id' => ['stringValue' => 'booking-123'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->completeMayarPayment('invoice-123', [
+            'id' => 'invoice-123',
+            'amount' => 75000,
+            'status' => 'paid',
+        ]);
+
+        $this->assertSame('paid', $result);
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+            $bookingWrite = $writes[0] ?? [];
+            $slotWrite = $writes[1] ?? [];
+
+            return count($writes) === 3
+                && ($bookingWrite['update']['fields']['status']['stringValue'] ?? null)
+                    === 'paid_pending_midwife'
+                && ($slotWrite['update']['fields']['status']['stringValue'] ?? null) === 'booked'
+                && in_array('hold_booking_id', $slotWrite['updateMask']['fieldPaths'] ?? [], true)
+                && ! array_key_exists('hold_booking_id', $slotWrite['update']['fields'] ?? [])
+                && ($writes[2]['update']['fields']['status']['stringValue'] ?? null) === 'paid';
+        });
+    }
+
+    public function test_paid_invoice_after_hold_expiry_requires_reconciliation_without_booking_the_slot(): void
+    {
+        $this->travelTo('2026-11-04 04:20:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/payments/invoice-123?*' => Http::response($this->document(
+                'payments/invoice-123',
+                [
+                    'invoice_id' => ['stringValue' => 'invoice-123'],
+                    'booking_id' => ['stringValue' => 'booking-123'],
+                    'amount' => ['integerValue' => '75000'],
+                    'status' => ['stringValue' => 'expired'],
+                ],
+            )),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'payment_id' => ['stringValue' => 'invoice-123'],
+                    'slot_id' => ['stringValue' => 'slot-123'],
+                    'status' => ['stringValue' => 'expired'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*documents/slots/slot-123?*' => Http::response($this->document(
+                'slots/slot-123',
+                ['status' => ['stringValue' => 'available']],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->completeMayarPayment('invoice-123', [
+            'id' => 'invoice-123',
+            'amount' => 75000,
+            'status' => 'paid',
+        ]);
+
+        $this->assertSame('reconciliation_required', $result);
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+
+            return count($writes) === 1
+                && str_ends_with($writes[0]['update']['name'] ?? '', '/payments/invoice-123')
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null)
+                    === 'paid_requires_reconciliation';
         });
     }
 

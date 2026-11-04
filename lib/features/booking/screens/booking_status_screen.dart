@@ -593,6 +593,15 @@ class _ServerBookingHoldStatusState
                 ],
               ),
             ),
+            if (_secondsRemaining > 0) ...[
+              const SizedBox(height: 16),
+              AppButton(
+                label: 'Lanjutkan Pembayaran',
+                icon: Icons.payment,
+                backgroundColor: AppColors.mayarBrand,
+                onPressed: () => context.push('/mayar-checkout/${booking.id}'),
+              ),
+            ],
           ],
           if (_refreshError != null) ...[
             const SizedBox(height: 12),
@@ -620,7 +629,7 @@ class _ServerBookingHoldStatusState
   String _bookingStatusMessage(String status) {
     return switch (status) {
       'awaiting_payment' =>
-        'Pembayaran belum tersedia di aplikasi. Status akan diperbarui setelah server memverifikasi pembayaran.',
+        'Booking menunggu pembayaran. Ketuk Lanjutkan Pembayaran untuk membuka halaman Mayar; status berubah setelah server memverifikasi pembayaran.',
       'paid_pending_midwife' =>
         'Pembayaran telah diverifikasi. Menunggu konfirmasi bidan.',
       'confirmed' => 'Booking dikonfirmasi. Jadwal konsultasi Anda tercatat.',

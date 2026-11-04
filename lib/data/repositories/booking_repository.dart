@@ -4,6 +4,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../models/booking_model.dart';
 import '../models/booking_hold_model.dart';
+import '../models/mayar_checkout_model.dart';
 import '../models/consultation_result_model.dart';
 import '../models/midwife_model.dart';
 import '../models/slot_model.dart';
@@ -151,6 +152,31 @@ class BookingRepository {
     );
   }
 
+  Future<MayarCheckout> createMayarCheckout({
+    required String bookingId,
+    required String mobile,
+  }) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final response = await apiClient.post(
+      ApiEndpoints.bookingCheckout(bookingId),
+      data: {'mobile': mobile},
+    );
+    final payload = response.data;
+    if (payload is! Map || payload['data'] is! Map) {
+      throw const FormatException(
+        'The API returned an invalid checkout response.',
+      );
+    }
+
+    return MayarCheckout.fromJson(
+      Map<String, dynamic>.from(payload['data'] as Map),
+    );
+  }
+
   // FR-06: Buat booking + hold slot -> awaiting_payment
   Future<Booking> createBooking({
     required AppUser patient,
@@ -188,18 +214,6 @@ class BookingRepository {
 
     _bookings.insert(0, booking);
     return booking;
-  }
-
-  // FR-07 & FR-08: Simulasi Mayar Sandbox Webhook -> paid_pending_midwife
-  Future<Booking> simulateMayarPaymentSuccess(String bookingId) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    final index = _bookings.indexWhere((b) => b.id == bookingId);
-    if (index == -1) throw Exception('Booking tidak ditemukan');
-
-    final updated = _bookings[index].copyWith(status: 'paid_pending_midwife');
-    _bookings[index] = updated;
-    return updated;
   }
 
   // FR-09: Bidan menerima booking -> confirmed
@@ -307,12 +321,6 @@ class BookingNotifier extends StateNotifier<List<Booking>> {
     );
     refresh();
     return booking;
-  }
-
-  Future<Booking> simulatePayment(String bookingId) async {
-    final updated = await _repo.simulateMayarPaymentSuccess(bookingId);
-    refresh();
-    return updated;
   }
 
   Future<Booking> midwifeAccept(String bookingId) async {

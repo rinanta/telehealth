@@ -119,6 +119,205 @@ class FirebaseService
     /**
      * @return list<array<string, mixed>>
      */
+    public function getPendingMayarPayments(): array
+    {
+        return $this->runFirestoreQuery('payments', [
+            ['field' => 'status', 'value' => ['stringValue' => 'pending']],
+        ]);
+    }
+
+    /**
+     * @param  array{id: string, transaction_id: string, link: string}  $invoice
+     */
+    public function attachMayarInvoice(
+        string $bookingId,
+        string $patientId,
+        int $amount,
+        string $holdExpiresAt,
+        array $invoice,
+    ): bool {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+        $slotId = $booking['slot_id'] ?? null;
+
+        if (
+            $booking === null
+            || ($booking['patient_id'] ?? null) !== $patientId
+            || ($booking['status'] ?? null) !== 'awaiting_payment'
+            || ($booking['payment_id'] ?? null) !== null
+            || ($booking['amount'] ?? null) !== $amount
+            || ($booking['hold_expires_at'] ?? null) !== $holdExpiresAt
+            || ! is_string($slotId)
+            || ! $this->isFutureTimestamp($booking['hold_expires_at'] ?? null)
+        ) {
+            return false;
+        }
+
+        $slot = $this->getDocumentInTransaction('slots', $slotId, $transaction);
+        if (
+            ($slot['status'] ?? null) !== 'held'
+            || ($slot['hold_booking_id'] ?? null) !== $bookingId
+            || ($slot['hold_expires_at'] ?? null) !== $holdExpiresAt
+            || ! $this->isFutureTimestamp($slot['hold_expires_at'] ?? null)
+        ) {
+            return false;
+        }
+
+        if ($this->getDocumentInTransaction('payments', $invoice['id'], $transaction) !== null) {
+            return false;
+        }
+
+        $createdAt = now('UTC')->toIso8601String();
+
+        return $this->commitFirestoreTransaction($transaction, [
+            [
+                'update' => [
+                    'name' => $this->documentName('payments', $invoice['id']),
+                    'fields' => [
+                        'provider' => ['stringValue' => 'mayar'],
+                        'environment' => ['stringValue' => config('services.mayar.environment', 'sandbox')],
+                        'invoice_id' => ['stringValue' => $invoice['id']],
+                        'transaction_id' => ['stringValue' => $invoice['transaction_id']],
+                        'booking_id' => ['stringValue' => $bookingId],
+                        'patient_id' => ['stringValue' => $patientId],
+                        'amount' => ['integerValue' => (string) $amount],
+                        'checkout_url' => ['stringValue' => $invoice['link']],
+                        'status' => ['stringValue' => 'pending'],
+                        'created_at' => ['timestampValue' => $createdAt],
+                        'hold_expires_at' => ['timestampValue' => $holdExpiresAt],
+                    ],
+                ],
+                'updateMask' => [
+                    'fieldPaths' => [
+                        'provider',
+                        'environment',
+                        'invoice_id',
+                        'transaction_id',
+                        'booking_id',
+                        'patient_id',
+                        'amount',
+                        'checkout_url',
+                        'status',
+                        'created_at',
+                        'hold_expires_at',
+                    ],
+                ],
+                'currentDocument' => ['exists' => false],
+            ],
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'payment_id' => ['stringValue' => $invoice['id']],
+                    'payment_transaction_id' => ['stringValue' => $invoice['transaction_id']],
+                    'checkout_url' => ['stringValue' => $invoice['link']],
+                ],
+                ['payment_id', 'payment_transaction_id', 'checkout_url'],
+            ),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $invoice
+     */
+    public function completeMayarPayment(string $invoiceId, array $invoice): string
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $payment = $this->getDocumentInTransaction('payments', $invoiceId, $transaction);
+
+        if (
+            $payment === null
+            || ($payment['invoice_id'] ?? null) !== $invoiceId
+            || ($invoice['id'] ?? null) !== $invoiceId
+            || ($invoice['status'] ?? null) !== 'paid'
+        ) {
+            return 'unmatched';
+        }
+
+        if (($payment['status'] ?? null) === 'paid') {
+            return 'paid';
+        }
+
+        $paymentStatus = $payment['status'] ?? null;
+        if (! in_array($paymentStatus, ['pending', 'expired'], true)) {
+            return 'already_processed';
+        }
+
+        $now = now('UTC');
+        $paymentFields = [
+            'verified_at' => ['timestampValue' => $now->toIso8601String()],
+        ];
+        $paymentMask = ['verified_at'];
+        $bookingId = $payment['booking_id'] ?? null;
+        $booking = is_string($bookingId)
+            ? $this->getDocumentInTransaction('bookings', $bookingId, $transaction)
+            : null;
+        $slotId = $booking['slot_id'] ?? null;
+        $slot = is_string($slotId)
+            ? $this->getDocumentInTransaction('slots', $slotId, $transaction)
+            : null;
+
+        if (($invoice['amount'] ?? null) !== ($payment['amount'] ?? null)) {
+            $paymentFields['status'] = ['stringValue' => 'paid_requires_reconciliation'];
+            $paymentFields['reconciliation_reason'] = ['stringValue' => 'amount_mismatch'];
+            $paymentMask = [...$paymentMask, 'status', 'reconciliation_reason'];
+            $result = 'reconciliation_required';
+            $writes = [
+                $this->updateWrite('payments', $invoiceId, $paymentFields, $paymentMask),
+            ];
+        } elseif (
+            $paymentStatus === 'expired'
+            || ! is_string($bookingId)
+            || $booking === null
+            || ($booking['payment_id'] ?? null) !== $invoiceId
+            || ($booking['status'] ?? null) !== 'awaiting_payment'
+            || ! $this->isFutureTimestamp($booking['hold_expires_at'] ?? null)
+            || ! is_string($slotId)
+            || $slot === null
+            || ($slot['status'] ?? null) !== 'held'
+            || ($slot['hold_booking_id'] ?? null) !== $bookingId
+            || ! $this->isFutureTimestamp($slot['hold_expires_at'] ?? null)
+        ) {
+            $paymentFields['status'] = ['stringValue' => 'paid_requires_reconciliation'];
+            $paymentFields['reconciliation_reason'] = ['stringValue' => 'hold_expired_or_released'];
+            $paymentMask = [...$paymentMask, 'status', 'reconciliation_reason'];
+            $result = 'reconciliation_required';
+            $writes = [
+                $this->updateWrite('payments', $invoiceId, $paymentFields, $paymentMask),
+            ];
+        } else {
+            $paymentFields['status'] = ['stringValue' => 'paid'];
+            $paymentMask[] = 'status';
+            $result = 'paid';
+            $writes = [
+                $this->updateWrite(
+                    'bookings',
+                    $bookingId,
+                    [
+                        'status' => ['stringValue' => 'paid_pending_midwife'],
+                        'paid_at' => ['timestampValue' => $now->toIso8601String()],
+                    ],
+                    ['status', 'paid_at'],
+                ),
+                [
+                    'update' => [
+                        'name' => $this->documentName('slots', $slotId),
+                        'fields' => ['status' => ['stringValue' => 'booked']],
+                    ],
+                    'updateMask' => [
+                        'fieldPaths' => ['status', 'hold_booking_id', 'hold_expires_at'],
+                    ],
+                ],
+                $this->updateWrite('payments', $invoiceId, $paymentFields, $paymentMask),
+            ];
+        }
+
+        return $this->commitFirestoreTransaction($transaction, $writes) ? $result : 'retry';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
     public function getActiveVerifiedMidwives(): array
     {
         return $this->runFirestoreQuery('midwives', [
@@ -180,6 +379,7 @@ class FirebaseService
         }
 
         $expiredBooking = null;
+        $expiredPayment = null;
         if (($slot['status'] ?? null) === 'available') {
             if (! empty($slot['hold_booking_id']) || ! empty($slot['hold_expires_at'])) {
                 throw new SlotUnavailableException;
@@ -223,6 +423,17 @@ class FirebaseService
                 )
             ) {
                 throw new SlotUnavailableException;
+            }
+
+            if (
+                ($expiredBooking['status'] ?? null) === 'awaiting_payment'
+                && is_string($expiredBooking['payment_id'] ?? null)
+            ) {
+                $expiredPayment = $this->getDocumentInTransaction(
+                    'payments',
+                    $expiredBooking['payment_id'],
+                    $transaction,
+                );
             }
         } else {
             throw new SlotUnavailableException;
@@ -276,6 +487,21 @@ class FirebaseService
                 ],
                 ['status', 'expired_at'],
             );
+
+            if (
+                $expiredPayment !== null
+                && ($expiredPayment['status'] ?? null) === 'pending'
+            ) {
+                $writes[] = $this->updateWrite(
+                    'payments',
+                    (string) $expiredPayment['id'],
+                    [
+                        'status' => ['stringValue' => 'expired'],
+                        'expired_at' => ['timestampValue' => $createdAt->toIso8601String()],
+                    ],
+                    ['status', 'expired_at'],
+                );
+            }
         }
 
         $writes[] = [
@@ -374,6 +600,22 @@ class FirebaseService
                 ['status', 'expired_at'],
             ),
         ];
+
+        $paymentId = $booking['payment_id'] ?? null;
+        if (is_string($paymentId) && $paymentId !== '') {
+            $payment = $this->getDocumentInTransaction('payments', $paymentId, $transaction);
+            if ($payment !== null && ($payment['status'] ?? null) === 'pending') {
+                $writes[] = $this->updateWrite(
+                    'payments',
+                    $paymentId,
+                    [
+                        'status' => ['stringValue' => 'expired'],
+                        'expired_at' => ['timestampValue' => $now->toIso8601String()],
+                    ],
+                    ['status', 'expired_at'],
+                );
+            }
+        }
 
         if (
             ($slot['status'] ?? null) === 'held'
@@ -646,6 +888,13 @@ class FirebaseService
         $expiresAt = is_string($timestamp) ? strtotime($timestamp) : false;
 
         return $expiresAt !== false && $expiresAt <= $now;
+    }
+
+    private function isFutureTimestamp(mixed $timestamp): bool
+    {
+        $expiresAt = is_string($timestamp) ? strtotime($timestamp) : false;
+
+        return $expiresAt !== false && $expiresAt > now('UTC')->getTimestamp();
     }
 
     private function documentsUrl(): string

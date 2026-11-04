@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\MayarWebhookController;
 use App\Http\Controllers\Api\MidwifeController;
 use App\Http\Middleware\RequirePatientRole;
 use App\Http\Middleware\VerifyFirebaseIdToken;
@@ -11,6 +12,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', static fn (): JsonResponse => response()->json([
     'status' => 'ok',
 ]))->name('health');
+
+Route::post('/webhooks/mayar/{secret}', [MayarWebhookController::class, 'handle'])
+    ->middleware('throttle:10,1')
+    ->name('webhooks.mayar');
 
 Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::post('/auth/register', [AuthController::class, 'register'])->name('auth.register');
@@ -23,5 +28,8 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
         Route::post('/bookings', [BookingController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('bookings.store');
+        Route::post('/bookings/{id}/checkout', [BookingController::class, 'checkout'])
+            ->middleware('throttle:5,1')
+            ->name('bookings.checkout');
     });
 });

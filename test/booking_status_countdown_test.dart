@@ -47,7 +47,8 @@ void main() {
     expect(find.text('Rp 82.500'), findsOneWidget);
     expect(find.byKey(const Key('booking-hold-countdown')), findsOneWidget);
     expect(find.textContaining('Slot ditahan sampai'), findsOneWidget);
-    expect(find.textContaining('Pembayaran belum tersedia'), findsOneWidget);
+    expect(find.textContaining('Booking menunggu pembayaran.'), findsOneWidget);
+    expect(find.text('Lanjutkan Pembayaran'), findsOneWidget);
   });
 
   testWidgets('refreshes booking status after server payment verification', (

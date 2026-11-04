@@ -21,6 +21,8 @@ class BookingHold {
   final String status;
   final DateTime createdAt;
   final DateTime holdExpiresAt;
+  final String? paymentId;
+  final String? checkoutUrl;
 
   const BookingHold({
     required this.id,
@@ -32,6 +34,8 @@ class BookingHold {
     required this.status,
     required this.createdAt,
     required this.holdExpiresAt,
+    this.paymentId,
+    this.checkoutUrl,
   });
 
   factory BookingHold.fromJson(Map<String, dynamic> json) {
@@ -48,6 +52,18 @@ class BookingHold {
         'The API returned an invalid booking status.',
       );
     }
+    final paymentId = json['payment_id'];
+    final checkoutUrl = json['checkout_url'];
+    if (paymentId != null && paymentId is! String) {
+      throw const FormatException(
+        'The API returned an invalid booking payment ID.',
+      );
+    }
+    if (checkoutUrl != null && checkoutUrl is! String) {
+      throw const FormatException(
+        'The API returned an invalid booking checkout URL.',
+      );
+    }
 
     return BookingHold(
       id: _requiredString(json, 'id'),
@@ -59,6 +75,8 @@ class BookingHold {
       status: status,
       createdAt: _requiredDateTime(json, 'created_at'),
       holdExpiresAt: _requiredDateTime(json, 'hold_expires_at'),
+      paymentId: paymentId as String?,
+      checkoutUrl: checkoutUrl as String?,
     );
   }
 

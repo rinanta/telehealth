@@ -13,7 +13,7 @@ Aplikasi telehealth edukasi kehamilan dan konsultasi chat bidan | MVP Android
 | Stack             | Flutter (Dart) \| Laravel (PHP) \| Firebase Auth + Cloud Firestore \| Gemini API \| Mayar Sandbox |
 | Tim               | Fida: PM, UI/UX, QA, dokumentasi; Rinanta: frontend Flutter; Iqbal: Laravel, Firebase, AI, Mayar  |
 
-Keputusan inti: tidak ada video call. Chat AI gratis. Konsultasi bidan dilakukan melalui chat teks selama 30 menit dengan pembayaran simulasi Mayar Sandbox. Hasil konsultasi disusun oleh bidan, bukan AI.
+Keputusan inti: tidak ada video call. Chat AI gratis. Konsultasi bidan dilakukan melalui chat teks selama 30 menit dengan pembayaran melalui Mayar Sandbox. Hasil konsultasi disusun oleh bidan, bukan AI.
 
 # 1. Ringkasan Produk
 
@@ -45,8 +45,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 3. Dashboard Pasien menampilkan tombol "Chat AI Gratis", "Cari Bidan", booking terdekat dan riwayat.
 4. Chat AI (opsional): tanya jawab edukasi kehamilan; tersedia CTA "Konsultasi Bidan".
 5. Pilih bidan, lihat profil dan slot tersedia, tentukan tanggal/jam, isi keluhan singkat, konfirmasi booking.
-6. Backend menahan slot sementara dan membuat booking awaiting_payment; pasien diarahkan ke halaman/link checkout Mayar Sandbox.
-7. Mayar mengirim notifikasi pembayaran; Laravel memverifikasi keaslian dan status melalui API/aturan resmi penyedia, kemudian mengubah booking menjadi paid_pending_midwife.
+6. Backend menahan slot sementara dan membuat booking awaiting_payment; pasien mengisi nomor ponsel, lalu Laravel membuat invoice Mayar Sandbox dengan tarif dan waktu kedaluwarsa dari data server.
+7. Pasien membayar melalui tautan checkout Mayar. Notifikasi `payment.received` hanya menjadi pemicu; Laravel mengambil status invoice langsung dari API Mayar dan mencocokkan invoice serta nominal sebelum mengubah booking menjadi paid_pending_midwife.
 8. Bidan mengonfirmasi booking; status menjadi confirmed. Pasien melihat jadwal dan tombol chat terkunci hingga sesi dibuka.
 9. Pada waktu sesi, bidan memulai sesi dan pasien masuk chat; timer konsultasi 30 menit dihitung oleh server berdasarkan started_at.
 10. Bidan menulis ringkasan keluhan, saran, rekomendasi vitamin/suplemen jika sesuai kewenangan dan diperlukan, tindak lanjut/rujukan; bidan menekan Selesaikan.
@@ -67,8 +67,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 | Objek                   | Status / aturan                                                                                                                             |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Booking                 | Alur normal: awaiting_payment -> paid_pending_midwife -> confirmed -> active -> completed. Alur akhir/pengecualian: awaiting_payment -> payment_failed / expired / cancelled; paid_pending_midwife -> rejected; confirmed -> no_show. Setiap transisi divalidasi backend. |
-| Pembayaran              | created / pending / paid / failed / expired / refunded_test (jika didukung skenario sandbox); paid hanya dari verifikasi server             |
-| Slot                    | Ditahan secara atomik 15 menit sejak booking dibuat; satu slot hanya boleh memiliki satu booking aktif. Status slot menjadi `held` dengan `hold_booking_id` dan `hold_expires_at`. Hold dilepas saat pembayaran gagal atau kedaluwarsa. Scheduler backend memeriksa hold kedaluwarsa sekurangnya setiap menit dan hanya melepas slot bila booking masih `awaiting_payment` serta slot masih menunjuk booking tersebut. Durasi dapat dikonfigurasi server (`BOOKING_HOLD_MINUTES`, default 15). Pembayaran valid yang datang setelah hold dilepas direkonsiliasi dan tidak otomatis mengambil slot kembali. |
+| Pembayaran              | created / pending / paid / failed / expired / paid_requires_reconciliation / refunded_test (jika didukung skenario sandbox); paid hanya dari verifikasi server |
+| Slot | Alur status `available -> held -> booked`; ditahan secara atomik 15 menit sejak booking dibuat, satu slot hanya boleh memiliki satu booking aktif. Status `held` memakai `hold_booking_id` dan `hold_expires_at`. Hold dilepas ke `available` saat pembayaran belum terverifikasi ketika kedaluwarsa. Setelah pembayaran terverifikasi saat hold masih dimiliki booking, slot menjadi `booked`. Scheduler backend memeriksa hold kedaluwarsa sekurangnya setiap menit dan hanya melepas slot bila booking masih `awaiting_payment` serta slot masih menunjuk booking tersebut. Durasi dapat dikonfigurasi server (`BOOKING_HOLD_MINUTES`, default 15). Pembayaran valid yang datang setelah hold dilepas direkonsiliasi dan tidak otomatis mengambil slot kembali. |
 | Tarif konsultasi        | `midwives/{uid}.consultation_fee` adalah integer Rupiah positif yang hanya ditetapkan proses admin tepercaya. Saat booking, backend membaca tarif ini dan menyalinnya ke `bookings.amount`; klien tidak boleh mengirim atau menentukan tarif. Bidan tanpa tarif valid belum dapat dipesan. |
 | Konsultasi              | Sesi normal 30 menit; started_at dan ends_at ditetapkan backend; hanya 1 sesi aktif per booking. |
 | Keterlambatan           | Toleransi 10 menit adalah jendela bidan untuk memulai sesi dari waktu jadwal; setelah itu tandai no_show dan lakukan penanganan/penjadwalan ulang manual. Toleransi tidak memperpanjang durasi sesi. |
@@ -87,8 +87,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 | FR-04 | Chat AI menerima pesan dan respons edukasi, menampilkan disclaimer dan penanganan error.        |
 | FR-05 | Daftar bidan dan jadwal hanya menampilkan slot valid yang tersedia.                             |
 | FR-06 | Booking membuat hold atomik; satu slot tidak bisa terjual ke dua pasien.                        |
-| FR-07 | Mayar Sandbox checkout dibuat oleh Laravel; hasil sukses UI tidak otomatis menandakan paid.     |
-| FR-08 | Webhook/notifikasi tervalidasi dan idempoten mengubah status transaksi/booking sekali.          |
+| FR-07 | Mayar Sandbox invoice dibuat oleh Laravel dengan tarif booking dari server; Flutter hanya membuka tautan checkout dan tidak dapat menandai pembayaran lunas. |
+| FR-08 | Notifikasi `payment.received` diterima di endpoint webhook beralamat rahasia; Laravel memverifikasi invoice dan nominal langsung ke Mayar. Pemrosesan idempoten; pembayaran setelah hold dilepas memerlukan rekonsiliasi manual. |
 | FR-09 | Bidan hanya melihat dan menerima booking atas namanya yang sudah dibayar.                       |
 | FR-10 | Chat pasien-bidan hanya bisa saat sesi aktif; kedua perangkat menerima pesan realtime.          |
 | FR-11 | Timer 30 menit dan kunci pesan dikontrol server, tidak bergantung jam HP.                       |
@@ -123,7 +123,7 @@ Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Compos
 | midwives/{uid}                          | display_name, credential_label, bio, active, verification_status, consultation_fee (Rupiah integer) |
 | slots/{slotId}                          | midwife_id, start_at, end_at, status, hold_booking_id, hold_expires_at                          |
 | bookings/{bookingId}                    | patient_id, midwife_id, slot_id, slot_start_at, complaint, amount, status, payment_id, created_at, hold_expires_at |
-| payments/{paymentId}                    | booking_id, provider=mayar, environment=sandbox, external_id, status, checkout_url, verified_at |
+| payments/{invoiceId}                    | provider, environment, invoice_id, transaction_id, booking_id, patient_id, amount, checkout_url, status, created_at, hold_expires_at, verified_at, reconciliation_reason_optional |
 | consultations/{consultationId}          | booking_id, patient_id, midwife_id, started_at, ends_at, status, completed_at                   |
 | consultations/{id}/messages/{messageId} | sender_id, text, sent_at, type=text                                                             |
 | consultation_results/{id}               | consultation_id, summary, advice, supplement_note_optional, follow_up, saved_by, completed_at   |
@@ -141,8 +141,8 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | GET /api/midwives/{id}/slots          | Pasien; slot tersedia                                                   |
 | POST /api/bookings                    | Pasien; body `slot_id` dan `complaint`; buat booking `awaiting_payment` + hold atomik 15 menit. `amount` diambil backend dari tarif bidan, tidak diterima dari klien. |
 | GET /api/bookings/{id}                | Pasien pemilik booking; status dan data booking terbaru dari backend    |
-| POST /api/bookings/{id}/checkout      | Pasien; buat checkout Mayar Sandbox                                     |
-| POST /api/webhooks/mayar              | Mayar; callback server, verifikasi signature/payload sesuai dokumentasi |
+| POST /api/bookings/{id}/checkout      | Pasien; body nomor ponsel; buat invoice Mayar dari nominal booking di server |
+| POST /api/webhooks/mayar/{secret}     | Mayar; callback HTTPS dengan URL rahasia; invoice dan nominal selalu diverifikasi ulang melalui API Mayar |
 | POST /api/bookings/{id}/accept        | Bidan pemilik booking                                                   |
 | POST /api/bookings/{id}/reject        | Bidan; alasan dan penanganan lanjutan                                   |
 | POST /api/consultations/{id}/start    | Bidan; mulai sesi sesuai jadwal                                         |
@@ -152,7 +152,9 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | POST /api/ai/chat                     | Pasien; Laravel meneruskan permintaan ke Gemini                         |
 | GET /api/history                      | Pasien/bidan; hasil dan riwayat yang diizinkan                          |
 
-Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response dan status harus disalin dari dokumentasi Mayar sesuai versi API yang dipilih sebelum coding; tabel ini hanya kontrak API internal Laravel. Endpoint checkout dan seluruh endpoint bisnis memerlukan autentikasi Firebase, kecuali webhook Mayar yang memerlukan verifikasi provider. Setiap endpoint memeriksa kepemilikan/role di backend, bukan hanya di UI.
+Endpoint Mayar sebenarnya, jenis pembayaran, response dan status harus mengikuti dokumentasi Mayar v2; tabel ini hanya kontrak API internal Laravel. Dokumentasi webhook Mayar yang digunakan tidak mendeskripsikan signature untuk diverifikasi, sehingga endpoint memakai URL rahasia yang disimpan di `MAYAR_WEBHOOK_SECRET` dan tidak mempercayai isi callback sebagai bukti pembayaran. Callback `payment.received` hanya memicu Laravel untuk mengambil detail invoice secara server-to-server. Endpoint checkout dan seluruh endpoint bisnis memerlukan autentikasi Firebase; endpoint webhook memerlukan URL rahasia dan verifikasi status langsung ke Mayar. Setiap endpoint memeriksa kepemilikan/role di backend, bukan hanya di UI.
+
+Untuk konfigurasi lokal, isi `MAYAR_ENVIRONMENT=sandbox`, `MAYAR_API_KEY`, dan `MAYAR_WEBHOOK_SECRET` di `backend/.env`; jangan menaruh API key di Flutter, Git, atau chat. Webhook Mayar harus menunjuk ke URL HTTPS publik yang berakhir dengan `/api/webhooks/mayar/{nilai-MAYAR_WEBHOOK_SECRET}`.
 
 # 10. Daftar Layar dan Navigasi
 
@@ -218,7 +220,7 @@ Endpoint Mayar sebenarnya, skema webhook, signature, jenis pembayaran, response 
 
 | Risiko                                             | Mitigasi                                                                                        |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Mayar endpoint/status berbeda antardokumen         | Tetapkan versi API Mayar dan uji endpoint sandbox dari dokumentasi resmi terlebih dahulu        |
+| Mayar webhook tidak menyebut signature pada dokumentasi yang digunakan | Rahasiakan URL webhook dan verifikasi invoice langsung via API Mayar; jangan mempercayai callback sebagai bukti bayar |
 | Laravel di localhost tidak menerima webhook publik | Gunakan endpoint staging HTTPS/tunnel aman untuk pengujian webhook                              |
 | Firebase Security Rules lemah                      | Gunakan pembatasan role/peserta dan uji akses silang dengan emulator; jangan mengandalkan UI    |
 | Duplikasi slot & webhook                           | Gunakan transaksi/lock Firestore dan idempotency key                                            |
@@ -232,8 +234,8 @@ MVP dinyatakan selesai jika dua akun berbeda berhasil menjalankan alur pasien bo
 
 # 16. Referensi Teknis dan Catatan Verifikasi
 
-- Mayar Developer/API: <https://mayar.id/agents> ; dokumentasi API: <https://docs.mayar.id/> (periksa versi, status, dan webhook aktual).
-- Mayar sandbox evidence: <https://mcp.mayar.id/> menyebut Environment=sandbox; untuk REST tetap cocokkan base URL dan autentikasi dokumentasi resminya.
+- Mayar API v2: <https://docs.mayar.id/api-reference-v2/introduction.md>, <https://docs.mayar.id/api-reference-v2/invoice/create.md>, <https://docs.mayar.id/api-reference-v2/invoice/detail.md>; gunakan host Sandbox `https://api.mayar.club/hl/v2` dan Production `https://api.mayar.id/hl/v2`, dengan API key pada header `Authorization: Bearer <API_KEY>` sesuai integrasi resmi Mayar saat ini (<https://github.com/mayarid/mayar-cli>).
+- Mayar webhook: <https://docs.mayar.id/integration/webhook.md>; dokumentasi yang digunakan tidak mendeskripsikan signature callback.
 - Google Gemini API key: <https://ai.google.dev/gemini-api/docs/api-key> ; simpan credential di Laravel, bukan APK.
 - Firebase: <https://firebase.google.com/docs/auth> dan <https://firebase.google.com/docs/firestore> ; implementasikan Rules dan indeks berdasarkan skema.
 - Laravel: <https://laravel.com/docs> ; gunakan framework versi stabil yang kompatibel dengan PHP server tim.
