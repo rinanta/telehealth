@@ -119,6 +119,88 @@ class FirebaseService
     /**
      * @return list<array<string, mixed>>
      */
+    public function getBookingsForMidwife(string $midwifeId): array
+    {
+        return $this->runFirestoreQuery('bookings', [
+            ['field' => 'midwife_id', 'value' => ['stringValue' => $midwifeId]],
+        ]);
+    }
+
+    public function acceptBookingForMidwife(string $bookingId, string $midwifeId): string
+    {
+        return $this->transitionMidwifeBooking(
+            $bookingId,
+            $midwifeId,
+            ['paid_pending_midwife'],
+            [
+                'status' => ['stringValue' => 'confirmed'],
+                'confirmed_at' => ['timestampValue' => now('UTC')->toIso8601String()],
+            ],
+            ['status', 'confirmed_at'],
+            'accepted',
+        );
+    }
+
+    public function rejectBookingForMidwife(
+        string $bookingId,
+        string $midwifeId,
+        string $reason,
+    ): string {
+        return $this->transitionMidwifeBooking(
+            $bookingId,
+            $midwifeId,
+            ['paid_pending_midwife'],
+            [
+                'status' => ['stringValue' => 'rejected'],
+                'rejection_reason' => ['stringValue' => $reason],
+                'rejected_at' => ['timestampValue' => now('UTC')->toIso8601String()],
+            ],
+            ['status', 'rejection_reason', 'rejected_at'],
+            'rejected',
+        );
+    }
+
+    /**
+     * @param  list<string>  $allowedStatuses
+     * @param  array<string, array<string, mixed>>  $fields
+     * @param  list<string>  $fieldPaths
+     */
+    private function transitionMidwifeBooking(
+        string $bookingId,
+        string $midwifeId,
+        array $allowedStatuses,
+        array $fields,
+        array $fieldPaths,
+        string $successResult,
+    ): string {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+
+        if ($booking === null) {
+            return 'not_found';
+        }
+
+        if (($booking['midwife_id'] ?? null) !== $midwifeId) {
+            return 'not_owned';
+        }
+
+        if (! in_array($booking['status'] ?? null, $allowedStatuses, true)) {
+            return 'not_pending';
+        }
+
+        return $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                $fields,
+                $fieldPaths,
+            ),
+        ]) ? $successResult : 'conflict';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
     public function getPendingMayarPayments(): array
     {
         return $this->runFirestoreQuery('payments', [

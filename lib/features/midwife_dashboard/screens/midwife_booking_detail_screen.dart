@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,11 +15,16 @@ class MidwifeBookingDetailScreen extends ConsumerStatefulWidget {
   const MidwifeBookingDetailScreen({super.key, required this.bookingId});
 
   @override
-  ConsumerState<MidwifeBookingDetailScreen> createState() => _MidwifeBookingDetailScreenState();
+  ConsumerState<MidwifeBookingDetailScreen> createState() =>
+      _MidwifeBookingDetailScreenState();
 }
 
-class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetailScreen> {
-  final _reasonController = TextEditingController(text: 'Sedang ada tindakan pertolongan persalinan darurat di fasilitas kesehatan.');
+class _MidwifeBookingDetailScreenState
+    extends ConsumerState<MidwifeBookingDetailScreen> {
+  final _reasonController = TextEditingController(
+    text:
+        'Sedang ada tindakan pertolongan persalinan darurat di fasilitas kesehatan.',
+  );
   bool _isProcessing = false;
 
   @override
@@ -29,24 +35,50 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
 
   Future<void> _handleAccept() async {
     setState(() => _isProcessing = true);
-    await ref.read(bookingsListProvider.notifier).midwifeAccept(widget.bookingId);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(backgroundColor: AppColors.success, content: Text('Reservasi berhasil dikonfirmasi!')),
-    );
-    context.pop();
+    try {
+      await ref
+          .read(bookingRepositoryProvider)
+          .acceptMidwifeBooking(widget.bookingId);
+      ref.invalidate(midwifeBookingsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text('Reservasi berhasil dikonfirmasi!'),
+        ),
+      );
+      context.pop();
+    } on DioException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konfirmasi gagal. Coba muat ulang.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
   }
 
   void _showRejectDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Tolak Reservasi Konsultasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        title: const Text(
+          'Tolak Reservasi Konsultasi',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Tuliskan alasan penolakan untuk disampaikan kepada pasien:', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+            const Text(
+              'Tuliskan alasan penolakan untuk disampaikan kepada pasien:',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Pengembalian dana tidak otomatis. Setelah menolak, lakukan refund manual melalui Mayar.',
+              style: TextStyle(fontSize: 12, color: AppColors.danger),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _reasonController,
@@ -58,17 +90,51 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () async {
+              final reason = _reasonController.text.trim();
+              if (reason.length < 5) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Alasan penolakan minimal 5 karakter.'),
+                  ),
+                );
+                return;
+              }
               Navigator.pop(ctx);
               setState(() => _isProcessing = true);
-              await ref.read(bookingsListProvider.notifier).midwifeReject(
-                    widget.bookingId,
-                    _reasonController.text.trim(),
-                  );
-              if (mounted) context.pop();
+              try {
+                await ref
+                    .read(bookingRepositoryProvider)
+                    .rejectMidwifeBooking(
+                      bookingId: widget.bookingId,
+                      reason: reason,
+                    );
+                ref.invalidate(midwifeBookingsProvider);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Reservasi ditolak. Pembayaran harus direfund manual melalui Mayar.',
+                    ),
+                  ),
+                );
+                context.pop();
+              } on DioException {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Penolakan gagal. Coba muat ulang.'),
+                  ),
+                );
+              } finally {
+                if (mounted) setState(() => _isProcessing = false);
+              }
             },
             child: const Text('Konfirmasi Tolak'),
           ),
@@ -79,11 +145,29 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
 
   @override
   Widget build(BuildContext context) {
-    final bookings = ref.watch(bookingsListProvider);
+    final bookingsAsync = ref.watch(midwifeBookingsProvider);
+    if (bookingsAsync.isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detail Reservasi')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (bookingsAsync.hasError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detail Reservasi')),
+        body: Center(
+          child: OutlinedButton(
+            onPressed: () => ref.invalidate(midwifeBookingsProvider),
+            child: const Text('Gagal memuat. Coba lagi'),
+          ),
+        ),
+      );
+    }
+    final bookings = bookingsAsync.value ?? <Booking>[];
     final booking = bookings.cast<Booking?>().firstWhere(
-          (b) => b?.id == widget.bookingId,
-          orElse: () => null,
-        );
+      (b) => b?.id == widget.bookingId,
+      orElse: () => null,
+    );
 
     if (booking == null) {
       return Scaffold(
@@ -94,9 +178,7 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Rincian Reservasi Pasien'),
-      ),
+      appBar: AppBar(title: const Text('Rincian Reservasi Pasien')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -115,18 +197,40 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('ID: ${booking.id}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      Text(
+                        'ID: ${booking.id}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                       StatusBadge(status: booking.status),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(booking.patientName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                  Text(
+                    booking.patientName,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_month_outlined, size: 14, color: AppColors.secondary),
+                      const Icon(
+                        Icons.calendar_month_outlined,
+                        size: 14,
+                        color: AppColors.secondary,
+                      ),
                       const SizedBox(width: 6),
-                      Text(Formatters.formatDateTime(booking.slotStartAt), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        Formatters.formatDateTime(booking.slotStartAt),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -147,9 +251,19 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Keluhan / Catatan Pasien', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const Text(
+                    'Keluhan / Catatan Pasien',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 8),
-                  Text(booking.complaint, style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textPrimary)),
+                  Text(
+                    booking.complaint,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -167,29 +281,69 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Verifikasi Pembayaran', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const Text(
+                    'Verifikasi Pembayaran',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Nominal Konsultasi', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      Text(Formatters.toRupiah(booking.amount), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      const Text(
+                        'Nominal Konsultasi',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      Text(
+                        Formatters.toRupiah(booking.amount),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Metode', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      const Text('Mayar Sandbox Gateway', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.mayarBrand)),
+                      const Text(
+                        'Metode',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const Text(
+                        'Mayar Sandbox Gateway',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.mayarBrand,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('ID Pembayaran Eksternal', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      Text(booking.paymentId ?? '-', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                      const Text(
+                        'ID Pembayaran Eksternal',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      Text(
+                        booking.paymentId ?? '-',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -215,15 +369,9 @@ class _MidwifeBookingDetailScreenState extends ConsumerState<MidwifeBookingDetai
                 onPressed: _isProcessing ? null : _showRejectDialog,
               ),
             ] else if (booking.isConfirmed) ...[
-              AppButton(
-                label: 'Mulai Sesi Konsultasi Sekarang',
-                icon: Icons.chat_rounded,
-                backgroundColor: AppColors.secondary,
-                onPressed: () async {
-                  await ref.read(bookingsListProvider.notifier).startConsultation(booking.id);
-                  if (!context.mounted) return;
-                  context.push('/consultation-chat/${booking.id}');
-                },
+              const Text(
+                'Booking sudah dikonfirmasi. Integrasi sesi chat bidan-pasien menjadi tahap berikutnya.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
             ],
 

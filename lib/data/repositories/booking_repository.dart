@@ -152,6 +152,49 @@ class BookingRepository {
     );
   }
 
+  Future<List<Booking>> getMidwifeBookings() async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final response = await apiClient.get(ApiEndpoints.midwifeBookings);
+    final payload = response.data;
+    if (payload is! Map || payload['data'] is! List) {
+      throw const FormatException(
+        'The API returned an invalid midwife bookings response.',
+      );
+    }
+
+    return (payload['data'] as List)
+        .map((item) => Booking.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+  }
+
+  Future<void> acceptMidwifeBooking(String bookingId) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    await apiClient.post(ApiEndpoints.midwifeBookingAccept(bookingId));
+  }
+
+  Future<void> rejectMidwifeBooking({
+    required String bookingId,
+    required String reason,
+  }) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    await apiClient.post(
+      ApiEndpoints.midwifeBookingReject(bookingId),
+      data: {'reason': reason},
+    );
+  }
+
   Future<MayarCheckout> createMayarCheckout({
     required String bookingId,
     required String mobile,
@@ -371,6 +414,10 @@ final serverBookingProvider = FutureProvider.family<BookingHold, String>((
   bookingId,
 ) {
   return ref.watch(bookingRepositoryProvider).fetchBookingById(bookingId);
+});
+
+final midwifeBookingsProvider = FutureProvider<List<Booking>>((ref) {
+  return ref.watch(bookingRepositoryProvider).getMidwifeBookings();
 });
 
 final bookingsListProvider =

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/booking_repository.dart';
 
 class MidwifeHistoryScreen extends ConsumerWidget {
@@ -12,17 +11,27 @@ class MidwifeHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authStateProvider);
-    final bookings = ref.watch(bookingsListProvider);
+    final bookingsAsync = ref.watch(midwifeBookingsProvider);
+    if (bookingsAsync.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (bookingsAsync.hasError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Riwayat Pasien Praktik')),
+        body: Center(
+          child: OutlinedButton(
+            onPressed: () => ref.invalidate(midwifeBookingsProvider),
+            child: const Text('Gagal memuat. Coba lagi'),
+          ),
+        ),
+      );
+    }
 
-    final midwifeId = user?.uid ?? 'midwife_001';
-    final midwifeBookings = bookings.where((b) => b.midwifeId == midwifeId).toList();
+    final midwifeBookings = bookingsAsync.value ?? [];
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Riwayat Pasien Praktik'),
-      ),
+      appBar: AppBar(title: const Text('Riwayat Pasien Praktik')),
       body: midwifeBookings.isEmpty
           ? const Center(child: Text('Belum ada riwayat konsultasi pasien.'))
           : ListView.separated(
@@ -55,18 +64,31 @@ class MidwifeHistoryScreen extends ConsumerWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(booking.patientName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                            Text(
+                              booking.patientName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
                             StatusBadge(status: booking.status),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textSecondary),
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               Formatters.formatDateTime(booking.slotStartAt),
-                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
                           ],
                         ),
@@ -75,15 +97,24 @@ class MidwifeHistoryScreen extends ConsumerWidget {
                           'Keluhan: ${booking.complaint}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Text(
-                              booking.isCompleted ? 'Lihat Lembar Hasil >' : 'Buka Detail >',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.secondary),
+                              booking.isCompleted
+                                  ? 'Lihat Lembar Hasil >'
+                                  : 'Buka Detail >',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.secondary,
+                              ),
                             ),
                           ],
                         ),

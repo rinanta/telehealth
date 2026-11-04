@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,11 +16,35 @@ class MidwifeDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider);
-    final bookings = ref.watch(bookingsListProvider);
+    final bookingsAsync = ref.watch(midwifeBookingsProvider);
 
-    final midwifeBookings = user == null
-        ? <Booking>[]
-        : bookings.where((b) => b.midwifeId == user.uid).toList();
+    if (bookingsAsync.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (bookingsAsync.hasError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Praktik Bidan')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Booking bidan gagal dimuat dari server.'),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => ref.invalidate(midwifeBookingsProvider),
+                  child: const Text('Coba lagi'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final midwifeBookings = bookingsAsync.value ?? <Booking>[];
 
     // Filter status
     final pendingConfirmBookings = midwifeBookings
@@ -236,9 +261,7 @@ class MidwifeDashboardScreen extends ConsumerWidget {
                 ),
               )
             else
-              ...confirmedBookings.map(
-                (b) => _buildConfirmedCard(context, ref, b),
-              ),
+              ...confirmedBookings.map(_buildConfirmedCard),
 
             const SizedBox(height: 20),
           ],
@@ -415,9 +438,22 @@ class MidwifeDashboardScreen extends ConsumerWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
-                    await ref
-                        .read(bookingsListProvider.notifier)
-                        .midwifeAccept(booking.id);
+                    try {
+                      await ref
+                          .read(bookingRepositoryProvider)
+                          .acceptMidwifeBooking(booking.id);
+                      ref.invalidate(midwifeBookingsProvider);
+                    } on DioException {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Booking gagal dikonfirmasi. Coba muat ulang.',
+                            ),
+                          ),
+                        );
+                      }
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     visualDensity: VisualDensity.compact,
@@ -433,11 +469,7 @@ class MidwifeDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildConfirmedCard(
-    BuildContext context,
-    WidgetRef ref,
-    Booking booking,
-  ) {
+  Widget _buildConfirmedCard(Booking booking) {
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 12),
@@ -481,18 +513,9 @@ class MidwifeDashboardScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          AppButton(
-            label: 'Mulai Sesi Konsultasi (30 Menit)',
-            icon: Icons.play_arrow_rounded,
-            backgroundColor: AppColors.secondary,
-            onPressed: () async {
-              await ref
-                  .read(bookingsListProvider.notifier)
-                  .startConsultation(booking.id);
-              if (context.mounted) {
-                context.push('/consultation-chat/${booking.id}');
-              }
-            },
+          const Text(
+            'Sesi chat bidan-pasien belum terhubung ke server.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
         ],
       ),

@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\MayarWebhookController;
+use App\Http\Controllers\Api\MidwifeBookingController;
 use App\Http\Controllers\Api\MidwifeController;
+use App\Http\Middleware\RequireMidwifeRole;
 use App\Http\Middleware\RequirePatientRole;
 use App\Http\Middleware\VerifyFirebaseIdToken;
 use Illuminate\Http\JsonResponse;
@@ -31,5 +33,17 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
         Route::post('/bookings/{id}/checkout', [BookingController::class, 'checkout'])
             ->middleware('throttle:5,1')
             ->name('bookings.checkout');
+    });
+
+    Route::middleware(RequireMidwifeRole::class)->prefix('midwife')->group(function (): void {
+        Route::get('/bookings', [MidwifeBookingController::class, 'index'])
+            ->name('midwife.bookings.index');
+    });
+
+    Route::middleware(RequireMidwifeRole::class)->group(function (): void {
+        Route::post('/bookings/{id}/accept', [MidwifeBookingController::class, 'accept'])
+            ->name('midwife.bookings.accept');
+        Route::post('/bookings/{id}/reject', [MidwifeBookingController::class, 'reject'])
+            ->name('midwife.bookings.reject');
     });
 });

@@ -139,12 +139,13 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | GET /api/me                           | Semua; role dan profil                                                  |
 | GET /api/midwives                     | Pasien; daftar bidan aktif                                              |
 | GET /api/midwives/{id}/slots          | Pasien; slot tersedia                                                   |
+| GET /api/midwife/bookings             | Bidan terverifikasi; daftar booking milik sendiri                      |
 | POST /api/bookings                    | Pasien; body `slot_id` dan `complaint`; buat booking `awaiting_payment` + hold atomik 15 menit. `amount` diambil backend dari tarif bidan, tidak diterima dari klien. |
 | GET /api/bookings/{id}                | Pasien pemilik booking; status dan data booking terbaru dari backend    |
 | POST /api/bookings/{id}/checkout      | Pasien; body nomor ponsel; buat invoice Mayar dari nominal booking di server |
 | POST /api/webhooks/mayar/{secret}     | Mayar; callback HTTPS dengan URL rahasia; invoice dan nominal selalu diverifikasi ulang melalui API Mayar |
-| POST /api/bookings/{id}/accept        | Bidan pemilik booking                                                   |
-| POST /api/bookings/{id}/reject        | Bidan; alasan dan penanganan lanjutan                                   |
+| POST /api/bookings/{id}/accept        | Bidan terverifikasi pemilik booking; konfirmasi transaksi atomik        |
+| POST /api/bookings/{id}/reject        | Bidan pemilik booking; alasan wajib; refund Mayar ditangani manual      |
 | POST /api/consultations/{id}/start    | Bidan; mulai sesi sesuai jadwal                                         |
 | GET /api/consultations/{id}           | Peserta; status dan timer                                               |
 | POST /api/consultations/{id}/messages | Peserta; backend memvalidasi sesi aktif dan waktu, lalu menulis pesan    |

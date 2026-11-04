@@ -295,6 +295,64 @@ class FirebaseBookingTransactionTest extends TestCase
         });
     }
 
+    public function test_midwife_booking_query_is_scoped_to_the_authenticated_midwife(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:runQuery' => Http::response([[
+                'document' => $this->document('bookings/booking-123', [
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'status' => ['stringValue' => 'paid_pending_midwife'],
+                ]),
+            ]]),
+        ]);
+
+        $bookings = $this->firebase()->getBookingsForMidwife('midwife-123');
+
+        $this->assertSame('booking-123', $bookings[0]['id']);
+        Http::assertSent(static function (Request $request): bool {
+            $filters = $request->data()['structuredQuery']['where']['compositeFilter']['filters'] ?? [];
+
+            return str_ends_with($request->url(), ':runQuery')
+                && ($request->data()['structuredQuery']['from'][0]['collectionId'] ?? null) === 'bookings'
+                && count($filters) === 1
+                && ($filters[0]['fieldFilter']['field']['fieldPath'] ?? null) === 'midwife_id'
+                && ($filters[0]['fieldFilter']['value']['stringValue'] ?? null) === 'midwife-123';
+        });
+    }
+
+    public function test_midwife_acceptance_transaction_confirms_only_her_paid_booking(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'tx1']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'status' => ['stringValue' => 'paid_pending_midwife'],
+                ],
+            )),
+            '*:commit' => Http::response(['writeResults' => []]),
+        ]);
+
+        $result = $this->firebase()->acceptBookingForMidwife('booking-123', 'midwife-123');
+
+        $this->assertSame('accepted', $result);
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+
+            return count($writes) === 1
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'confirmed'
+                && in_array('confirmed_at', $writes[0]['updateMask']['fieldPaths'] ?? [], true)
+                && ($request->data()['transaction'] ?? null) === 'tx1';
+        });
+    }
+
     public function test_attach_mayar_invoice_saves_payment_and_checkout_link_atomically(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
