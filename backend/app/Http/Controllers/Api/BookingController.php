@@ -11,6 +11,21 @@ use Illuminate\Http\Request;
 
 class BookingController extends Controller
 {
+    public function show(string $id, Request $request, FirebaseService $firebase): JsonResponse
+    {
+        $booking = $firebase->getBooking($id);
+        $patientId = $request->attributes->get('firebase_uid');
+
+        if ($booking === null || ($booking['patient_id'] ?? null) !== $patientId) {
+            return response()->json([
+                'message' => 'Booking not found.',
+                'code' => 'booking_not_found',
+            ], 404);
+        }
+
+        return response()->json(['data' => $booking]);
+    }
+
     public function store(Request $request, FirebaseService $firebase): JsonResponse
     {
         $data = $request->validate([

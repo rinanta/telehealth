@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -34,10 +35,7 @@ class BookingStatusScreen extends ConsumerWidget {
     );
 
     if (booking == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Status Reservasi')),
-        body: const Center(child: Text('Reservasi tidak ditemukan.')),
-      );
+      return _ServerBookingStatusLoader(bookingId: bookingId);
     }
 
     return Scaffold(
@@ -383,43 +381,118 @@ class BookingStatusScreen extends ConsumerWidget {
   }
 }
 
-class _ServerBookingHoldStatus extends StatefulWidget {
+class _ServerBookingStatusLoader extends ConsumerWidget {
+  final String bookingId;
+
+  const _ServerBookingStatusLoader({required this.bookingId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final booking = ref.watch(serverBookingProvider(bookingId));
+
+    return booking.when(
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (error, stackTrace) => Scaffold(
+        appBar: AppBar(title: const Text('Status Reservasi')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Status booking tidak dapat dimuat dari server.'),
+              TextButton(
+                onPressed: () =>
+                    ref.invalidate(serverBookingProvider(bookingId)),
+                child: const Text('Coba lagi'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (bookingHold) => _ServerBookingHoldStatus(bookingHold: bookingHold),
+    );
+  }
+}
+
+class _ServerBookingHoldStatus extends ConsumerStatefulWidget {
   final BookingHold bookingHold;
 
   const _ServerBookingHoldStatus({required this.bookingHold});
 
   @override
-  State<_ServerBookingHoldStatus> createState() =>
+  ConsumerState<_ServerBookingHoldStatus> createState() =>
       _ServerBookingHoldStatusState();
 }
 
-class _ServerBookingHoldStatusState extends State<_ServerBookingHoldStatus> {
-  Timer? _timer;
+class _ServerBookingHoldStatusState
+    extends ConsumerState<_ServerBookingHoldStatus> {
+  Timer? _countdownTimer;
+  Timer? _refreshTimer;
   late int _secondsRemaining;
+  late BookingHold _booking;
+  String? _refreshError;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
+    _booking = widget.bookingHold;
     _secondsRemaining = _remainingSecondsUntilExpiry();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       final remaining = _remainingSecondsUntilExpiry();
       if (remaining != _secondsRemaining && mounted) {
         setState(() => _secondsRemaining = remaining);
       }
       if (remaining == 0) {
-        _timer?.cancel();
+        _countdownTimer?.cancel();
+      }
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_booking.status == 'awaiting_payment' ||
+          _booking.status == 'paid_pending_midwife') {
+        _refreshBooking();
       }
     });
   }
 
+  Future<void> _refreshBooking() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+
+    try {
+      final booking = await ref
+          .read(bookingRepositoryProvider)
+          .fetchBookingById(widget.bookingHold.id);
+      if (!mounted) return;
+      setState(() {
+        _booking = booking;
+        _refreshError = null;
+        _secondsRemaining = _remainingSecondsUntilExpiry();
+      });
+    } on DioException {
+      if (!mounted) return;
+      setState(() {
+        _refreshError = 'Status belum dapat diperbarui. Memeriksa lagi...';
+      });
+    } on FormatException {
+      if (!mounted) return;
+      setState(() {
+        _refreshError = 'Respons status booking dari server tidak valid.';
+      });
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   @override
   void dispose() {
-    _timer?.cancel();
+    _countdownTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
   int _remainingSecondsUntilExpiry() {
-    final remaining = widget.bookingHold.holdExpiresAt
+    final remaining = _booking.holdExpiresAt
         .difference(DateTime.now())
         .inSeconds;
     return remaining < 0 ? 0 : remaining;
@@ -427,7 +500,7 @@ class _ServerBookingHoldStatusState extends State<_ServerBookingHoldStatus> {
 
   @override
   Widget build(BuildContext context) {
-    final booking = widget.bookingHold;
+    final booking = _booking;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -462,7 +535,7 @@ class _ServerBookingHoldStatusState extends State<_ServerBookingHoldStatus> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const StatusBadge(status: 'awaiting_payment'),
+                StatusBadge(status: booking.status),
                 const SizedBox(height: 16),
                 _BookingDetailRow(
                   label: 'Tarif dari server',
@@ -472,64 +545,94 @@ class _ServerBookingHoldStatusState extends State<_ServerBookingHoldStatus> {
                 const SizedBox(height: 10),
                 _BookingDetailRow(
                   label: 'Jadwal konsultasi',
-                  value: Formatters.formatDateTime(
-                    booking.slotStartAt.toLocal(),
-                  ),
+                  value: Formatters.formatDateTime(booking.slotStartAt),
                 ),
                 const SizedBox(height: 10),
                 _BookingDetailRow(label: 'ID reservasi', value: booking.id),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
+          if (booking.status == 'awaiting_payment') ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'Waktu hold tersisa',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    Formatters.formatTimer(_secondsRemaining),
+                    key: const Key('booking-hold-countdown'),
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _secondsRemaining > 0
+                        ? 'Slot ditahan sampai ${Formatters.formatTime(booking.holdExpiresAt)}.'
+                        : 'Waktu hold tercapai. Memeriksa status terbaru dari server.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                const Text(
-                  'Waktu hold tersisa',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  Formatters.formatTimer(_secondsRemaining),
-                  key: const Key('booking-hold-countdown'),
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _secondsRemaining > 0
-                      ? 'Slot ditahan sampai ${Formatters.formatTime(booking.holdExpiresAt.toLocal())}.'
-                      : 'Waktu hold tercapai. Status booking diperbarui oleh backend.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
+          ],
+          if (_refreshError != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _refreshError!,
+              key: const Key('booking-refresh-error'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 16),
-          const Text(
-            'Pembayaran belum tersedia di aplikasi. Status akan berubah hanya setelah backend memverifikasi pembayaran.',
+          Text(
+            _bookingStatusMessage(booking.status),
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
         ],
       ),
     );
+  }
+
+  String _bookingStatusMessage(String status) {
+    return switch (status) {
+      'awaiting_payment' =>
+        'Pembayaran belum tersedia di aplikasi. Status akan diperbarui setelah server memverifikasi pembayaran.',
+      'paid_pending_midwife' =>
+        'Pembayaran telah diverifikasi. Menunggu konfirmasi bidan.',
+      'confirmed' => 'Booking dikonfirmasi. Jadwal konsultasi Anda tercatat.',
+      'active' => 'Sesi konsultasi sedang berlangsung.',
+      'completed' => 'Sesi konsultasi telah selesai.',
+      'expired' => 'Waktu hold habis dan slot telah dilepas oleh server.',
+      'payment_failed' => 'Pembayaran gagal. Silakan buat booking baru.',
+      'cancelled' => 'Booking dibatalkan.',
+      'rejected' => 'Booking ditolak oleh bidan.',
+      'no_show' => 'Booking ditandai sebagai tidak hadir.',
+      _ => 'Status booking: $status.',
+    };
   }
 }
 

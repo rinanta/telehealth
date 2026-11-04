@@ -19,6 +19,7 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::middleware(RequirePatientRole::class)->group(function (): void {
         Route::get('/midwives', [MidwifeController::class, 'index'])->name('midwives.index');
         Route::get('/midwives/{id}/slots', [MidwifeController::class, 'slots'])->name('midwives.slots');
+        Route::get('/bookings/{id}', [BookingController::class, 'show'])->name('bookings.show');
         Route::post('/bookings', [BookingController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('bookings.store');

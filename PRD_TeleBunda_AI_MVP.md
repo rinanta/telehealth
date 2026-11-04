@@ -122,7 +122,7 @@ Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Compos
 | users/{uid}                             | uid, name, email, role, verified, created_at                                                    |
 | midwives/{uid}                          | display_name, credential_label, bio, active, verification_status, consultation_fee (Rupiah integer) |
 | slots/{slotId}                          | midwife_id, start_at, end_at, status, hold_booking_id, hold_expires_at                          |
-| bookings/{bookingId}                    | patient_id, midwife_id, slot_id, complaint, amount, status, payment_id, created_at, hold_expires_at |
+| bookings/{bookingId}                    | patient_id, midwife_id, slot_id, slot_start_at, complaint, amount, status, payment_id, created_at, hold_expires_at |
 | payments/{paymentId}                    | booking_id, provider=mayar, environment=sandbox, external_id, status, checkout_url, verified_at |
 | consultations/{consultationId}          | booking_id, patient_id, midwife_id, started_at, ends_at, status, completed_at                   |
 | consultations/{id}/messages/{messageId} | sender_id, text, sent_at, type=text                                                             |
@@ -140,7 +140,7 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | GET /api/midwives                     | Pasien; daftar bidan aktif                                              |
 | GET /api/midwives/{id}/slots          | Pasien; slot tersedia                                                   |
 | POST /api/bookings                    | Pasien; body `slot_id` dan `complaint`; buat booking `awaiting_payment` + hold atomik 15 menit. `amount` diambil backend dari tarif bidan, tidak diterima dari klien. |
-| GET /api/bookings                     | Pasien/bidan; data berdasarkan role                                     |
+| GET /api/bookings/{id}                | Pasien pemilik booking; status dan data booking terbaru dari backend    |
 | POST /api/bookings/{id}/checkout      | Pasien; buat checkout Mayar Sandbox                                     |
 | POST /api/webhooks/mayar              | Mayar; callback server, verifikasi signature/payload sesuai dokumentasi |
 | POST /api/bookings/{id}/accept        | Bidan pemilik booking                                                   |

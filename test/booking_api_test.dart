@@ -48,6 +48,30 @@ void main() {
       },
     );
 
+    test(
+      'fetches the latest booking status from its protected endpoint',
+      () async {
+        final response = _bookingResponse(amount: 82500)
+          ..['data']['status'] = 'paid_pending_midwife';
+        final adapter = _BookingHttpClientAdapter(response);
+        final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'));
+        dio.httpClientAdapter = adapter;
+        final apiClient = ApiClient(customDio: dio)
+          ..setTokenProvider(() async => 'firebase-id-token');
+        final repository = BookingRepository(apiClient: apiClient);
+
+        final booking = await repository.fetchBookingById('booking-123');
+
+        expect(booking.status, 'paid_pending_midwife');
+        expect(adapter.requestOptions?.method, 'GET');
+        expect(adapter.requestOptions?.path, '/bookings/booking-123');
+        expect(
+          adapter.requestOptions?.headers['Authorization'],
+          'Bearer firebase-id-token',
+        );
+      },
+    );
+
     test('rejects a booking response that omits its server amount', () async {
       final response = _bookingResponse(amount: null);
       final dio = Dio(BaseOptions(baseUrl: 'https://api.example.test'));

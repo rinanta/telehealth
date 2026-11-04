@@ -74,6 +74,49 @@ class FirebaseService
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function getBooking(string $bookingId): ?array
+    {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->get($this->documentUrl('bookings', $bookingId));
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+
+        $booking = $this->decodeFields($response->json('fields', []));
+        $booking['id'] = $bookingId;
+
+        if (! is_string($booking['slot_start_at'] ?? null)) {
+            $slotId = $booking['slot_id'] ?? null;
+            if (is_string($slotId) && $slotId !== '') {
+                $slotResponse = Http::withToken($this->firestoreAccessToken())
+                    ->acceptJson()
+                    ->connectTimeout(3)
+                    ->timeout(15)
+                    ->get($this->documentUrl('slots', $slotId));
+
+                if ($slotResponse->successful()) {
+                    $slot = $this->decodeFields($slotResponse->json('fields', []));
+                    if (is_string($slot['start_at'] ?? null)) {
+                        $booking['slot_start_at'] = $slot['start_at'];
+                    }
+                } elseif ($slotResponse->status() !== 404) {
+                    $slotResponse->throw();
+                }
+            }
+        }
+
+        return $booking;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function getActiveVerifiedMidwives(): array
@@ -242,6 +285,7 @@ class FirebaseService
                     'patient_id' => ['stringValue' => $patientId],
                     'midwife_id' => ['stringValue' => $midwifeId],
                     'slot_id' => ['stringValue' => $slotId],
+                    'slot_start_at' => ['timestampValue' => $slotStart],
                     'complaint' => ['stringValue' => $complaint],
                     'amount' => ['integerValue' => (string) $consultationFee],
                     'status' => ['stringValue' => 'awaiting_payment'],
@@ -255,6 +299,7 @@ class FirebaseService
                     'patient_id',
                     'midwife_id',
                     'slot_id',
+                    'slot_start_at',
                     'complaint',
                     'amount',
                     'status',

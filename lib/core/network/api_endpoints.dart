@@ -13,6 +13,7 @@ class ApiEndpoints {
 
   // Bookings & Payments
   static const String bookings = '/bookings';
+  static String booking(String bookingId) => '/bookings/$bookingId';
   static String bookingCheckout(String bookingId) => '/bookings/$bookingId/checkout';
   static String bookingAccept(String bookingId) => '/bookings/$bookingId/accept';
   static String bookingReject(String bookingId) => '/bookings/$bookingId/reject';

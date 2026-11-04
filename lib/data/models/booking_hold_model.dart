@@ -1,4 +1,17 @@
 class BookingHold {
+  static const validStatuses = {
+    'awaiting_payment',
+    'payment_failed',
+    'expired',
+    'cancelled',
+    'paid_pending_midwife',
+    'rejected',
+    'confirmed',
+    'active',
+    'completed',
+    'no_show',
+  };
+
   final String id;
   final String patientId;
   final String midwifeId;
@@ -30,7 +43,7 @@ class BookingHold {
     }
 
     final status = json['status'];
-    if (status != 'awaiting_payment') {
+    if (status is! String || !validStatuses.contains(status)) {
       throw const FormatException(
         'The API returned an invalid booking status.',
       );
@@ -43,7 +56,7 @@ class BookingHold {
       slotId: _requiredString(json, 'slot_id'),
       slotStartAt: _requiredDateTime(json, 'slot_start_at'),
       amount: amount,
-      status: status as String,
+      status: status,
       createdAt: _requiredDateTime(json, 'created_at'),
       holdExpiresAt: _requiredDateTime(json, 'hold_expires_at'),
     );

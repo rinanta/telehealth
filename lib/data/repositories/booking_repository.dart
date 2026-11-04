@@ -132,6 +132,25 @@ class BookingRepository {
     );
   }
 
+  Future<BookingHold> fetchBookingById(String bookingId) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final response = await apiClient.get(ApiEndpoints.booking(bookingId));
+    final payload = response.data;
+    if (payload is! Map || payload['data'] is! Map) {
+      throw const FormatException(
+        'The API returned an invalid booking response.',
+      );
+    }
+
+    return BookingHold.fromJson(
+      Map<String, dynamic>.from(payload['data'] as Map),
+    );
+  }
+
   // FR-06: Buat booking + hold slot -> awaiting_payment
   Future<Booking> createBooking({
     required AppUser patient,
@@ -338,6 +357,13 @@ class BookingNotifier extends StateNotifier<List<Booking>> {
 final bookingRepositoryProvider = Provider<BookingRepository>(
   (ref) => BookingRepository(apiClient: ref.watch(apiClientProvider)),
 );
+
+final serverBookingProvider = FutureProvider.family<BookingHold, String>((
+  ref,
+  bookingId,
+) {
+  return ref.watch(bookingRepositoryProvider).fetchBookingById(bookingId);
+});
 
 final bookingsListProvider =
     StateNotifierProvider<BookingNotifier, List<Booking>>((ref) {

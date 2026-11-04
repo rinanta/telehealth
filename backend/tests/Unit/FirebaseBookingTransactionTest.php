@@ -18,6 +18,35 @@ class FirebaseBookingTransactionTest extends TestCase
         config(['firebase.project_id' => 'test-project']);
     }
 
+    public function test_get_booking_includes_slot_time_for_older_booking_documents(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*documents/bookings/booking-123' => Http::response($this->document(
+                'bookings/booking-123',
+                [
+                    'patient_id' => ['stringValue' => 'patient-123'],
+                    'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'slot_id' => ['stringValue' => 'slot-123'],
+                    'amount' => ['integerValue' => '75000'],
+                    'status' => ['stringValue' => 'paid_pending_midwife'],
+                    'created_at' => ['timestampValue' => '2026-11-04T04:00:00Z'],
+                    'hold_expires_at' => ['timestampValue' => '2026-11-04T04:15:00Z'],
+                ],
+            )),
+            '*documents/slots/slot-123' => Http::response($this->document(
+                'slots/slot-123',
+                ['start_at' => ['timestampValue' => '2026-11-05T02:00:00Z']],
+            )),
+        ]);
+
+        $booking = $this->firebase()->getBooking('booking-123');
+
+        $this->assertSame('booking-123', $booking['id']);
+        $this->assertSame('paid_pending_midwife', $booking['status']);
+        $this->assertSame('2026-11-05T02:00:00Z', $booking['slot_start_at']);
+    }
+
     public function test_create_booking_atomically_holds_the_slot_at_the_trusted_fee(): void
     {
         $this->travelTo('2026-11-04 04:00:00 UTC');
@@ -71,6 +100,8 @@ class FirebaseBookingTransactionTest extends TestCase
                 && ($slotFields['hold_booking_id']['stringValue'] ?? null)
                     === basename($writes[1]['update']['name'])
                 && ($bookingFields['amount']['integerValue'] ?? null) === '75000'
+                && ($bookingFields['slot_start_at']['timestampValue'] ?? null)
+                    === '2026-11-05T10:00:00Z'
                 && ($bookingFields['status']['stringValue'] ?? null) === 'awaiting_payment'
                 && ($writes[1]['currentDocument']['exists'] ?? null) === false
                 && ($request->data()['transaction'] ?? null) === 'dHgx';
