@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\ConsultationResultController;
 use App\Http\Controllers\Api\MidtransWebhookController;
 use App\Http\Controllers\Api\MidwifeBookingController;
 use App\Http\Controllers\Api\MidwifeController;
+use App\Http\Controllers\Api\MidwifeProfileController;
+use App\Http\Controllers\Api\MidwifeSlotController;
 use App\Http\Controllers\Api\PatientHistoryController;
 use App\Http\Middleware\RequireMidwifeRole;
 use App\Http\Middleware\RequirePatientRole;
@@ -42,6 +44,18 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::middleware(RequireMidwifeRole::class)->prefix('midwife')->group(function (): void {
         Route::get('/bookings', [MidwifeBookingController::class, 'index'])
             ->name('midwife.bookings.index');
+        Route::get('/profile', [MidwifeProfileController::class, 'show'])
+            ->name('midwife.profile.show');
+        Route::patch('/profile', [MidwifeProfileController::class, 'update'])
+            ->name('midwife.profile.update');
+        Route::get('/slots', [MidwifeSlotController::class, 'index'])
+            ->name('midwife.slots.index');
+        Route::post('/slots', [MidwifeSlotController::class, 'store'])
+            ->name('midwife.slots.store');
+        Route::patch('/slots/{id}', [MidwifeSlotController::class, 'update'])
+            ->name('midwife.slots.update');
+        Route::delete('/slots/{id}', [MidwifeSlotController::class, 'destroy'])
+            ->name('midwife.slots.destroy');
     });
 
     Route::middleware(RequireMidwifeRole::class)->group(function (): void {

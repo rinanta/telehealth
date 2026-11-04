@@ -643,6 +643,234 @@ class FirebaseService
     }
 
     /**
+     * Ambil data dokumen midwives/{midwifeId} untuk manajemen profil bidan.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getMidwifeProfile(string $midwifeId): ?array
+    {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->get($this->documentUrl('midwives', $midwifeId));
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+
+        $midwife = $this->decodeFields($response->json('fields', []));
+        $midwife['id'] = $midwifeId;
+
+        return $midwife;
+    }
+
+    /**
+     * Perbarui data profil bidan (tarif, display_name, bio).
+     *
+     * @param  array{consultation_fee?: int, bio?: string|null, display_name?: string}  $data
+     * @return string 'updated'|'not_found'|'conflict'
+     */
+    public function updateMidwifeProfile(string $midwifeId, array $data): string
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $midwife = $this->getDocumentInTransaction('midwives', $midwifeId, $transaction);
+
+        if ($midwife === null) {
+            return 'not_found';
+        }
+
+        $fields = [];
+        $fieldPaths = [];
+
+        if (array_key_exists('consultation_fee', $data) && is_int($data['consultation_fee'])) {
+            $fields['consultation_fee'] = ['integerValue' => (string) $data['consultation_fee']];
+            $fieldPaths[] = 'consultation_fee';
+        }
+
+        if (array_key_exists('bio', $data)) {
+            $fields['bio'] = is_string($data['bio']) && $data['bio'] !== ''
+                ? ['stringValue' => $data['bio']]
+                : ['nullValue' => null];
+            $fieldPaths[] = 'bio';
+        }
+
+        if (array_key_exists('display_name', $data) && is_string($data['display_name']) && $data['display_name'] !== '') {
+            $fields['display_name'] = ['stringValue' => $data['display_name']];
+            $fieldPaths[] = 'display_name';
+        }
+
+        if (empty($fieldPaths)) {
+            return 'updated';
+        }
+
+        return $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite('midwives', $midwifeId, $fields, $fieldPaths),
+        ]) ? 'updated' : 'conflict';
+    }
+
+    /**
+     * Ambil semua slot milik bidan tertentu (semua status: available, held, booked).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getSlotsForMidwife(string $midwifeId): array
+    {
+        return $this->runFirestoreQuery('slots', [
+            ['field' => 'midwife_id', 'value' => ['stringValue' => $midwifeId]],
+        ]);
+    }
+
+    /**
+     * Buat slot baru milik bidan dalam Firestore transaction.
+     * Mencegah overlap dengan slot yang sudah ada milik bidan tersebut.
+     *
+     * @return array<string, mixed>|string 'overlap'|array data slot
+     */
+    public function createSlotForMidwife(string $midwifeId, string $startAt, string $endAt): array|string
+    {
+        // Periksa overlap dengan slot milik bidan ini
+        $existing = $this->getSlotsForMidwife($midwifeId);
+        $newStart = strtotime($startAt);
+        $newEnd = strtotime($endAt);
+
+        foreach ($existing as $slot) {
+            $slotStart = strtotime($slot['start_at'] ?? '');
+            $slotEnd = strtotime($slot['end_at'] ?? '');
+
+            if ($slotStart === false || $slotEnd === false) {
+                continue;
+            }
+
+            // Aturan overlap: (StartA < EndB) dan (EndA > StartB)
+            if ($newStart < $slotEnd && $newEnd > $slotStart) {
+                return 'overlap';
+            }
+        }
+
+        $slotId = (string) Str::uuid();
+        $slotData = [
+            'midwife_id' => $midwifeId,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'status' => 'available',
+        ];
+
+        $fields = [
+            'midwife_id' => ['stringValue' => $midwifeId],
+            'start_at' => ['timestampValue' => $startAt],
+            'end_at' => ['timestampValue' => $endAt],
+            'status' => ['stringValue' => 'available'],
+        ];
+
+        $transaction = $this->beginFirestoreTransaction();
+        $committed = $this->commitFirestoreTransaction($transaction, [[
+            'update' => [
+                'name' => $this->documentName('slots', $slotId),
+                'fields' => $fields,
+            ],
+            'currentDocument' => ['exists' => false],
+        ]]);
+
+        if (! $committed) {
+            return 'overlap';
+        }
+
+        return ['id' => $slotId, ...$slotData];
+    }
+
+    /**
+     * Pindahkan jadwal slot (hanya jika slot masih berstatus available).
+     *
+     * @return array<string, mixed>|string 'not_found'|'not_owned'|'not_available'|'overlap'|array
+     */
+    public function updateSlotForMidwife(string $midwifeId, string $slotId, string $startAt, string $endAt): array|string
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $slot = $this->getDocumentInTransaction('slots', $slotId, $transaction);
+
+        if ($slot === null) {
+            return 'not_found';
+        }
+
+        if (($slot['midwife_id'] ?? null) !== $midwifeId) {
+            return 'not_owned';
+        }
+
+        if (($slot['status'] ?? null) !== 'available') {
+            return 'not_available';
+        }
+
+        // Periksa overlap dengan slot lain selain slot ini
+        $existing = $this->getSlotsForMidwife($midwifeId);
+        $newStart = strtotime($startAt);
+        $newEnd = strtotime($endAt);
+
+        foreach ($existing as $other) {
+            if (($other['id'] ?? null) === $slotId) {
+                continue;
+            }
+
+            $otherStart = strtotime($other['start_at'] ?? '');
+            $otherEnd = strtotime($other['end_at'] ?? '');
+
+            if ($otherStart !== false && $otherEnd !== false && $newStart < $otherEnd && $newEnd > $otherStart) {
+                return 'overlap';
+            }
+        }
+
+        $fields = [
+            'start_at' => ['timestampValue' => $startAt],
+            'end_at' => ['timestampValue' => $endAt],
+        ];
+
+        $committed = $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite('slots', $slotId, $fields, ['start_at', 'end_at']),
+        ]);
+
+        if (! $committed) {
+            return 'overlap';
+        }
+
+        return [
+            'id' => $slotId,
+            'midwife_id' => $midwifeId,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'status' => 'available',
+        ];
+    }
+
+    /**
+     * Hapus slot milik bidan (hanya jika slot masih berstatus available).
+     *
+     * @return string 'deleted'|'not_found'|'not_owned'|'not_available'|'conflict'
+     */
+    public function deleteSlotForMidwife(string $midwifeId, string $slotId): string
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $slot = $this->getDocumentInTransaction('slots', $slotId, $transaction);
+
+        if ($slot === null) {
+            return 'not_found';
+        }
+
+        if (($slot['midwife_id'] ?? null) !== $midwifeId) {
+            return 'not_owned';
+        }
+
+        if (($slot['status'] ?? null) !== 'available') {
+            return 'not_available';
+        }
+
+        return $this->commitFirestoreTransaction($transaction, [[
+            'delete' => $this->documentName('slots', $slotId),
+        ]]) ? 'deleted' : 'conflict';
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function getAvailableSlots(string $midwifeId): array
@@ -1029,7 +1257,7 @@ class FirebaseService
      * @param  list<array{field: string, value: array<string, mixed>, operator?: string}>  $filters
      * @return list<array<string, mixed>>
      */
-    private function runFirestoreQuery(string $collection, array $filters): array
+    private function runFirestoreQuery(string $collection, array $filters, ?string $transaction = null): array
     {
         $structuredFilters = array_map(
             static fn (array $filter): array => [

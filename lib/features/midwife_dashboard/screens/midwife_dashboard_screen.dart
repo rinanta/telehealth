@@ -104,6 +104,11 @@ class MidwifeDashboardScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
+            tooltip: 'Atur Tarif & Jadwal',
+            icon: const Icon(Icons.tune),
+            onPressed: () => context.push('/midwife-management'),
+          ),
+          IconButton(
             tooltip: 'Keluar Akun',
             icon: const Icon(Icons.logout, color: AppColors.danger),
             onPressed: () async {

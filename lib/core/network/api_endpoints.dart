@@ -12,6 +12,11 @@ class ApiEndpoints {
   static const String midwives = '/midwives';
   static String midwifeSlots(String midwifeId) => '/midwives/$midwifeId/slots';
 
+  // Midwife Self Management (Tarif & Jadwal)
+  static const String midwifeProfile = '/midwife/profile';
+  static const String midwifeOwnSlots = '/midwife/slots';
+  static String midwifeOwnSlot(String slotId) => '/midwife/slots/$slotId';
+
   // Bookings & Payments
   static const String bookings = '/bookings';
   static String booking(String bookingId) => '/bookings/$bookingId';

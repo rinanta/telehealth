@@ -35,6 +35,64 @@ class MidwifeRepository {
         .toList();
   }
 
+  // ==========================================
+  // Midwife Self-Management (Tarif & Jadwal)
+  // ==========================================
+
+  Future<Midwife> getMyProfile() async {
+    final response = await _apiClient.get(ApiEndpoints.midwifeProfile);
+    final map = response.data is Map && response.data['data'] is Map
+        ? Map<String, dynamic>.from(response.data['data'] as Map)
+        : <String, dynamic>{};
+    return Midwife.fromJson(map);
+  }
+
+  Future<Midwife> updateMyProfile({
+    int? consultationFee,
+    String? bio,
+    String? displayName,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (consultationFee != null) payload['consultation_fee'] = consultationFee;
+    if (bio != null) payload['bio'] = bio;
+    if (displayName != null) payload['display_name'] = displayName;
+
+    final response = await _apiClient.patch(
+      ApiEndpoints.midwifeProfile,
+      data: payload,
+    );
+    final map = response.data is Map && response.data['data'] is Map
+        ? Map<String, dynamic>.from(response.data['data'] as Map)
+        : <String, dynamic>{};
+    return Midwife.fromJson(map);
+  }
+
+  Future<List<ConsultationSlot>> getMySlots() async {
+    final response = await _apiClient.get(ApiEndpoints.midwifeOwnSlots);
+    final data = _responseData(response.data);
+
+    return data
+        .map((item) => ConsultationSlot.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+  }
+
+  Future<ConsultationSlot> createSlot(DateTime startAt) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.midwifeOwnSlots,
+      data: {
+        'start_at': startAt.toUtc().toIso8601String(),
+      },
+    );
+    final map = response.data is Map && response.data['data'] is Map
+        ? Map<String, dynamic>.from(response.data['data'] as Map)
+        : <String, dynamic>{};
+    return ConsultationSlot.fromJson(map);
+  }
+
+  Future<void> deleteSlot(String slotId) async {
+    await _apiClient.delete(ApiEndpoints.midwifeOwnSlot(slotId));
+  }
+
   List<dynamic> _responseData(dynamic response) {
     if (response is! Map || response['data'] is! List) {
       throw const FormatException('The API returned an invalid catalog response.');

@@ -40,14 +40,15 @@ class Midwife {
   };
 
   factory Midwife.fromJson(Map<String, dynamic> json) => Midwife(
-    uid: json['uid'] as String,
-    name: json['display_name'] as String,
-    credentialLabel: json['credential_label'] as String,
+    uid: (json['uid'] ?? json['id'] ?? '') as String,
+    name: (json['display_name'] ?? json['name'] ?? '') as String,
+    credentialLabel: (json['credential_label'] ?? '') as String,
     bio: json['bio'] as String?,
     rating: (json['rating'] as num?)?.toDouble(),
     reviewCount: json['review_count'] as int?,
     experienceYears: json['experience_years'] as int?,
-    price: (json['price'] as num?)?.toInt(),
+    price: (json['price'] as num?)?.toInt() ??
+        (json['consultation_fee'] as num?)?.toInt(),
     strNumber: json['str_number'] as String?,
     hospitalAffiliation: json['hospital_affiliation'] as String?,
     active: json['active'] as bool? ?? true,

@@ -20,6 +20,7 @@ import '../features/midwife_catalog/screens/midwife_detail_screen.dart';
 import '../features/midwife_dashboard/screens/midwife_booking_detail_screen.dart';
 import '../features/midwife_dashboard/screens/midwife_dashboard_screen.dart';
 import '../features/midwife_dashboard/screens/midwife_history_screen.dart';
+import '../features/midwife_dashboard/screens/midwife_management_screen.dart';
 import '../features/patient_dashboard/screens/patient_dashboard_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -41,7 +42,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           path.startsWith('/midwife-dashboard') ||
           path.startsWith('/midwife-booking-detail') ||
           path.startsWith('/midwife-result-form') ||
-          path.startsWith('/midwife-history');
+          path.startsWith('/midwife-history') ||
+          path.startsWith('/midwife-management');
 
       if (user != null) {
         // Jika Pasien mencoba membuka rute Bidan
@@ -158,6 +160,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/midwife-history',
         builder: (context, state) => const MidwifeHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/midwife-management',
+        builder: (context, state) => const MidwifeManagementScreen(),
       ),
     ],
   );
