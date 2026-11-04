@@ -1,0 +1,276 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Exceptions\BookingConfigurationException;
+use App\Exceptions\SlotUnavailableException;
+use App\Services\FirebaseService;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class FirebaseBookingTransactionTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['firebase.project_id' => 'test-project']);
+    }
+
+    public function test_create_booking_atomically_holds_the_slot_at_the_trusted_fee(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'dHgx']),
+            '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
+                'midwife_id' => ['stringValue' => 'midwife-123'],
+                'start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                'end_at' => ['timestampValue' => '2026-11-05T10:30:00Z'],
+                'status' => ['stringValue' => 'available'],
+            ])),
+            '*documents/midwives/midwife-123?*' => Http::response($this->document('midwives/midwife-123', [
+                'display_name' => ['stringValue' => 'Bidan Terverifikasi'],
+                'active' => ['booleanValue' => true],
+                'verification_status' => ['stringValue' => 'verified'],
+                'consultation_fee' => ['integerValue' => '75000'],
+            ])),
+            '*:commit' => Http::response(['writeResults' => [], 'commitTime' => '2026-11-04T04:00:00Z']),
+        ]);
+
+        $booking = $this->firebase()->createBookingWithSlotHold(
+            'patient-123',
+            'slot-123',
+            'Keluhan singkat.',
+        );
+
+        $this->assertSame('patient-123', $booking['patient_id']);
+        $this->assertSame('midwife-123', $booking['midwife_id']);
+        $this->assertSame(75000, $booking['amount']);
+        $this->assertSame('awaiting_payment', $booking['status']);
+        $this->assertSame('2026-11-04T04:15:00+00:00', $booking['hold_expires_at']);
+
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+            $slotFields = $writes[0]['update']['fields'] ?? [];
+            $bookingFields = $writes[1]['update']['fields'] ?? [];
+
+            return count($writes) === 2
+                && ($writes[0]['update']['name'] ?? null)
+                    === 'projects/test-project/databases/(default)/documents/slots/slot-123'
+                && str_starts_with(
+                    $writes[1]['update']['name'] ?? '',
+                    'projects/test-project/databases/(default)/documents/bookings/',
+                )
+                && ($slotFields['status']['stringValue'] ?? null) === 'held'
+                && ($slotFields['hold_booking_id']['stringValue'] ?? null)
+                    === basename($writes[1]['update']['name'])
+                && ($bookingFields['amount']['integerValue'] ?? null) === '75000'
+                && ($bookingFields['status']['stringValue'] ?? null) === 'awaiting_payment'
+                && ($writes[1]['currentDocument']['exists'] ?? null) === false
+                && ($request->data()['transaction'] ?? null) === 'dHgx';
+        });
+    }
+
+    public function test_create_booking_rejects_a_slot_already_held_by_another_patient(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'dHgx']),
+            '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
+                'midwife_id' => ['stringValue' => 'midwife-123'],
+                'status' => ['stringValue' => 'held'],
+                'hold_booking_id' => ['stringValue' => 'booking-existing'],
+                'hold_expires_at' => ['timestampValue' => '2026-11-04T04:10:00Z'],
+            ])),
+        ]);
+
+        try {
+            $this->firebase()->createBookingWithSlotHold(
+                'patient-123',
+                'slot-123',
+                'Keluhan singkat.',
+            );
+            $this->fail('A held slot must not be booked again.');
+        } catch (SlotUnavailableException) {
+            $this->assertTrue(true);
+        }
+
+        Http::assertNotSent(
+            static fn (Request $request): bool => str_ends_with($request->url(), ':commit'),
+        );
+    }
+
+    public function test_create_booking_reuses_an_expired_unpaid_hold_atomically(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'dHgx']),
+            '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
+                'midwife_id' => ['stringValue' => 'midwife-123'],
+                'start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                'end_at' => ['timestampValue' => '2026-11-05T10:30:00Z'],
+                'status' => ['stringValue' => 'held'],
+                'hold_booking_id' => ['stringValue' => 'booking-old'],
+                'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
+            ])),
+            '*documents/bookings/booking-old?*' => Http::response($this->document('bookings/booking-old', [
+                'slot_id' => ['stringValue' => 'slot-123'],
+                'status' => ['stringValue' => 'awaiting_payment'],
+                'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
+            ])),
+            '*documents/midwives/midwife-123?*' => Http::response($this->document('midwives/midwife-123', [
+                'active' => ['booleanValue' => true],
+                'verification_status' => ['stringValue' => 'verified'],
+                'consultation_fee' => ['integerValue' => '75000'],
+            ])),
+            '*:commit' => Http::response(['writeResults' => [], 'commitTime' => '2026-11-04T04:00:00Z']),
+        ]);
+
+        $this->firebase()->createBookingWithSlotHold(
+            'patient-123',
+            'slot-123',
+            'Keluhan singkat.',
+        );
+
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+
+            return count($writes) === 3
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'held'
+                && ($writes[1]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
+                && ($writes[2]['update']['fields']['status']['stringValue'] ?? null) === 'awaiting_payment';
+        });
+    }
+
+    public function test_midwife_without_a_positive_trusted_fee_cannot_be_booked(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'dHgx']),
+            '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
+                'midwife_id' => ['stringValue' => 'midwife-123'],
+                'start_at' => ['timestampValue' => '2026-11-05T10:00:00Z'],
+                'end_at' => ['timestampValue' => '2026-11-05T10:30:00Z'],
+                'status' => ['stringValue' => 'available'],
+            ])),
+            '*documents/midwives/midwife-123?*' => Http::response($this->document('midwives/midwife-123', [
+                'active' => ['booleanValue' => true],
+                'verification_status' => ['stringValue' => 'verified'],
+                'consultation_fee' => ['integerValue' => '0'],
+            ])),
+        ]);
+
+        try {
+            $this->firebase()->createBookingWithSlotHold(
+                'patient-123',
+                'slot-123',
+                'Keluhan singkat.',
+            );
+            $this->fail('A midwife without a configured fee must not be bookable.');
+        } catch (BookingConfigurationException) {
+            $this->assertTrue(true);
+        }
+
+        Http::assertNotSent(
+            static fn (Request $request): bool => str_ends_with($request->url(), ':commit'),
+        );
+    }
+
+    public function test_expired_unpaid_booking_and_its_owned_slot_are_released_atomically(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:beginTransaction' => Http::response(['transaction' => 'dHgx']),
+            '*documents/bookings/booking-123?*' => Http::response($this->document('bookings/booking-123', [
+                'slot_id' => ['stringValue' => 'slot-123'],
+                'status' => ['stringValue' => 'awaiting_payment'],
+                'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
+            ])),
+            '*documents/slots/slot-123?*' => Http::response($this->document('slots/slot-123', [
+                'status' => ['stringValue' => 'held'],
+                'hold_booking_id' => ['stringValue' => 'booking-123'],
+                'hold_expires_at' => ['timestampValue' => '2026-11-04T03:59:00Z'],
+            ])),
+            '*:commit' => Http::response(['writeResults' => [], 'commitTime' => '2026-11-04T04:00:00Z']),
+        ]);
+
+        $expired = $this->firebase()->expireBookingHold('booking-123');
+
+        $this->assertSame(true, $expired);
+        Http::assertSent(static function (Request $request): bool {
+            if (! str_ends_with($request->url(), ':commit')) {
+                return false;
+            }
+
+            $writes = $request->data()['writes'] ?? [];
+
+            return count($writes) === 2
+                && ($writes[0]['update']['fields']['status']['stringValue'] ?? null) === 'expired'
+                && ($writes[1]['update']['fields']['status']['stringValue'] ?? null) === 'available'
+                && in_array('hold_booking_id', $writes[1]['updateMask']['fieldPaths'] ?? [], true)
+                && ! array_key_exists('hold_booking_id', $writes[1]['update']['fields'] ?? []);
+        });
+    }
+
+    public function test_expiry_scan_queries_only_unpaid_bookings_past_the_deadline(): void
+    {
+        $this->travelTo('2026-11-04 04:00:00 UTC');
+        Http::preventStrayRequests();
+        Http::fake([
+            '*:runQuery' => Http::response([]),
+        ]);
+
+        $bookings = $this->firebase()->getExpiredBookingHolds();
+
+        $this->assertSame([], $bookings);
+        Http::assertSent(static function (Request $request): bool {
+            $filters = $request->data()['structuredQuery']['where']['compositeFilter']['filters'] ?? [];
+
+            return str_ends_with($request->url(), ':runQuery')
+                && ($request->data()['structuredQuery']['from'][0]['collectionId'] ?? null) === 'bookings'
+                && count($filters) === 2
+                && ($filters[0]['fieldFilter']['field']['fieldPath'] ?? null) === 'status'
+                && ($filters[0]['fieldFilter']['value']['stringValue'] ?? null) === 'awaiting_payment'
+                && ($filters[1]['fieldFilter']['field']['fieldPath'] ?? null) === 'hold_expires_at'
+                && ($filters[1]['fieldFilter']['op'] ?? null) === 'LESS_THAN_OR_EQUAL';
+        });
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $fields
+     * @return array<string, mixed>
+     */
+    private function document(string $path, array $fields): array
+    {
+        return [
+            'name' => 'projects/test-project/databases/(default)/documents/'.$path,
+            'fields' => $fields,
+            'updateTime' => '2026-11-04T04:00:00Z',
+        ];
+    }
+
+    private function firebase(): FirebaseService
+    {
+        return new class extends FirebaseService
+        {
+            protected function firestoreAccessToken(): string
+            {
+                return 'test-access-token';
+            }
+        };
+    }
+}

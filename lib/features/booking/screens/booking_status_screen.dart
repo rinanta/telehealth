@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,20 +8,30 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/models/booking_model.dart';
+import '../../../data/models/booking_hold_model.dart';
 import '../../../data/repositories/booking_repository.dart';
 
 class BookingStatusScreen extends ConsumerWidget {
   final String bookingId;
+  final BookingHold? bookingHold;
 
-  const BookingStatusScreen({super.key, required this.bookingId});
+  const BookingStatusScreen({
+    super.key,
+    required this.bookingId,
+    this.bookingHold,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (bookingHold != null) {
+      return _ServerBookingHoldStatus(bookingHold: bookingHold!);
+    }
+
     final bookings = ref.watch(bookingsListProvider);
     final booking = bookings.cast<Booking?>().firstWhere(
-          (b) => b?.id == bookingId,
-          orElse: () => null,
-        );
+      (b) => b?.id == bookingId,
+      orElse: () => null,
+    );
 
     if (booking == null) {
       return Scaffold(
@@ -59,23 +71,41 @@ class BookingStatusScreen extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Status Reservasi Saat Ini', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      const Text(
+                        'Status Reservasi Saat Ini',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                       StatusBadge(status: booking.status),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Text(
                     booking.midwifeName,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today_rounded, size: 14, color: AppColors.primary),
+                      const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 14,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         Formatters.formatDateTime(booking.slotStartAt),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ],
                   ),
@@ -88,7 +118,11 @@ class BookingStatusScreen extends ConsumerWidget {
             // Stepper Status Sesuai PRD State Machine
             const Text(
               'Alur Proses Reservasi',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 12),
             Container(
@@ -109,7 +143,9 @@ class BookingStatusScreen extends ConsumerWidget {
                   _buildStepDivider(true),
                   _buildStepItem(
                     title: '2. Pembayaran Mayar Sandbox',
-                    subtitle: booking.isAwaitingPayment ? 'Menunggu pembayaran di sandbox gateway' : 'Pembayaran terverifikasi server',
+                    subtitle: booking.isAwaitingPayment
+                        ? 'Menunggu pembayaran di sandbox gateway'
+                        : 'Pembayaran terverifikasi server',
                     isDone: !booking.isAwaitingPayment,
                     isActive: booking.isAwaitingPayment,
                   ),
@@ -118,27 +154,38 @@ class BookingStatusScreen extends ConsumerWidget {
                     title: '3. Konfirmasi dari Bidan',
                     subtitle: booking.isPaidPendingMidwife
                         ? 'Menunggu Bidan menerima jadwal reservasi'
-                        : (booking.isConfirmed || booking.isActive || booking.isCompleted)
-                            ? 'Bidan telah mengonfirmasi kehadiran'
-                            : 'Menunggu konfirmasi',
-                    isDone: booking.isConfirmed || booking.isActive || booking.isCompleted,
+                        : (booking.isConfirmed ||
+                              booking.isActive ||
+                              booking.isCompleted)
+                        ? 'Bidan telah mengonfirmasi kehadiran'
+                        : 'Menunggu konfirmasi',
+                    isDone:
+                        booking.isConfirmed ||
+                        booking.isActive ||
+                        booking.isCompleted,
                     isActive: booking.isPaidPendingMidwife,
                   ),
-                  _buildStepDivider(booking.isConfirmed || booking.isActive || booking.isCompleted),
+                  _buildStepDivider(
+                    booking.isConfirmed ||
+                        booking.isActive ||
+                        booking.isCompleted,
+                  ),
                   _buildStepItem(
                     title: '4. Sesi Konsultasi Chat (30 Menit)',
                     subtitle: booking.isActive
                         ? 'Sesi sedang berlangsung! Silakan masuk ruang chat.'
                         : booking.isCompleted
-                            ? 'Sesi 30 menit selesai'
-                            : 'Tombol chat akan dibuka saat sesi dimulai',
+                        ? 'Sesi 30 menit selesai'
+                        : 'Tombol chat akan dibuka saat sesi dimulai',
                     isDone: booking.isCompleted,
                     isActive: booking.isActive,
                   ),
                   _buildStepDivider(booking.isCompleted),
                   _buildStepItem(
                     title: '5. Rekap Hasil Konsultasi Medis',
-                    subtitle: booking.isCompleted ? 'Hasil pemeriksaan dan saran bidan telah siap' : 'Disusun oleh bidan setelah sesi selesai',
+                    subtitle: booking.isCompleted
+                        ? 'Hasil pemeriksaan dan saran bidan telah siap'
+                        : 'Disusun oleh bidan setelah sesi selesai',
                     isDone: booking.isCompleted,
                     isActive: false,
                   ),
@@ -154,13 +201,15 @@ class BookingStatusScreen extends ConsumerWidget {
                 label: 'Masuk ke Ruang Chat Konsultasi Sekarang',
                 icon: Icons.chat_rounded,
                 backgroundColor: AppColors.success,
-                onPressed: () => context.push('/consultation-chat/${booking.id}'),
+                onPressed: () =>
+                    context.push('/consultation-chat/${booking.id}'),
               )
             else if (booking.isCompleted)
               AppButton(
                 label: 'Lihat Hasil Konsultasi & Catatan Bidan',
                 icon: Icons.description_outlined,
-                onPressed: () => context.push('/consultation-result/${booking.id}'),
+                onPressed: () =>
+                    context.push('/consultation-result/${booking.id}'),
               )
             else if (booking.isAwaitingPayment)
               AppButton(
@@ -181,12 +230,19 @@ class BookingStatusScreen extends ConsumerWidget {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.lock_clock, color: AppColors.secondary, size: 20),
+                        Icon(
+                          Icons.lock_clock,
+                          color: AppColors.secondary,
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Jadwal terkonfirmasi. Chat akan aktif saat Bidan membuka sesi sesuai waktu konsultasi.',
-                            style: TextStyle(fontSize: 12, color: AppColors.secondaryDark),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.secondaryDark,
+                            ),
                           ),
                         ),
                       ],
@@ -199,7 +255,9 @@ class BookingStatusScreen extends ConsumerWidget {
                     icon: Icons.play_arrow_rounded,
                     backgroundColor: AppColors.secondary,
                     onPressed: () async {
-                      await ref.read(bookingsListProvider.notifier).startConsultation(booking.id);
+                      await ref
+                          .read(bookingsListProvider.notifier)
+                          .startConsultation(booking.id);
                       if (context.mounted) {
                         context.push('/consultation-chat/${booking.id}');
                       }
@@ -219,12 +277,19 @@ class BookingStatusScreen extends ConsumerWidget {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.hourglass_top, color: AppColors.info, size: 20),
+                        Icon(
+                          Icons.hourglass_top,
+                          color: AppColors.info,
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Pembayaran Anda telah diterima. Menunggu Bidan mengonfirmasi jadwal.',
-                            style: TextStyle(fontSize: 12, color: Color(0xFF1E3A8A)),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF1E3A8A),
+                            ),
                           ),
                         ),
                       ],
@@ -237,7 +302,9 @@ class BookingStatusScreen extends ConsumerWidget {
                     icon: Icons.thumb_up_alt_outlined,
                     backgroundColor: AppColors.info,
                     onPressed: () async {
-                      await ref.read(bookingsListProvider.notifier).midwifeAccept(booking.id);
+                      await ref
+                          .read(bookingsListProvider.notifier)
+                          .midwifeAccept(booking.id);
                     },
                   ),
                 ],
@@ -283,14 +350,21 @@ class BookingStatusScreen extends ConsumerWidget {
                 title,
                 style: TextStyle(
                   fontSize: 13,
-                  fontWeight: (isDone || isActive) ? FontWeight.w700 : FontWeight.w500,
-                  color: (isDone || isActive) ? AppColors.textPrimary : AppColors.textMuted,
+                  fontWeight: (isDone || isActive)
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                  color: (isDone || isActive)
+                      ? AppColors.textPrimary
+                      : AppColors.textMuted,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),
@@ -305,6 +379,199 @@ class BookingStatusScreen extends ConsumerWidget {
       height: 18,
       width: 2,
       color: isDone ? AppColors.success : AppColors.border,
+    );
+  }
+}
+
+class _ServerBookingHoldStatus extends StatefulWidget {
+  final BookingHold bookingHold;
+
+  const _ServerBookingHoldStatus({required this.bookingHold});
+
+  @override
+  State<_ServerBookingHoldStatus> createState() =>
+      _ServerBookingHoldStatusState();
+}
+
+class _ServerBookingHoldStatusState extends State<_ServerBookingHoldStatus> {
+  Timer? _timer;
+  late int _secondsRemaining;
+
+  @override
+  void initState() {
+    super.initState();
+    _secondsRemaining = _remainingSecondsUntilExpiry();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final remaining = _remainingSecondsUntilExpiry();
+      if (remaining != _secondsRemaining && mounted) {
+        setState(() => _secondsRemaining = remaining);
+      }
+      if (remaining == 0) {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  int _remainingSecondsUntilExpiry() {
+    final remaining = widget.bookingHold.holdExpiresAt
+        .difference(DateTime.now())
+        .inSeconds;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final booking = widget.bookingHold;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Status Reservasi'),
+        actions: [
+          IconButton(
+            tooltip: 'Ke Beranda',
+            icon: const Icon(Icons.home_outlined),
+            onPressed: () => context.go('/patient-dashboard'),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Status booking dari server',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const StatusBadge(status: 'awaiting_payment'),
+                const SizedBox(height: 16),
+                _BookingDetailRow(
+                  label: 'Tarif dari server',
+                  value: Formatters.toRupiah(booking.amount),
+                  valueKey: const Key('server-booking-amount'),
+                ),
+                const SizedBox(height: 10),
+                _BookingDetailRow(
+                  label: 'Jadwal konsultasi',
+                  value: Formatters.formatDateTime(
+                    booking.slotStartAt.toLocal(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _BookingDetailRow(label: 'ID reservasi', value: booking.id),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Waktu hold tersisa',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  Formatters.formatTimer(_secondsRemaining),
+                  key: const Key('booking-hold-countdown'),
+                  style: const TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _secondsRemaining > 0
+                      ? 'Slot ditahan sampai ${Formatters.formatTime(booking.holdExpiresAt.toLocal())}.'
+                      : 'Waktu hold tercapai. Status booking diperbarui oleh backend.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Pembayaran belum tersedia di aplikasi. Status akan berubah hanya setelah backend memverifikasi pembayaran.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Key? valueKey;
+
+  const _BookingDetailRow({
+    required this.label,
+    required this.value,
+    this.valueKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            key: valueKey,
+            textAlign: TextAlign.end,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

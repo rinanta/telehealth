@@ -27,6 +27,10 @@ class MidwifeController extends Controller
                 'display_name' => $document['display_name'],
                 'credential_label' => $document['credential_label'],
                 'bio' => is_string($document['bio'] ?? null) ? $document['bio'] : null,
+                'price' => is_int($document['consultation_fee'] ?? null)
+                    && $document['consultation_fee'] > 0
+                    ? $document['consultation_fee']
+                    : null,
             ];
         }
 

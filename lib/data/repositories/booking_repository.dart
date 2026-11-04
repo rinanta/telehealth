@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/api_endpoints.dart';
 import '../models/booking_model.dart';
+import '../models/booking_hold_model.dart';
 import '../models/consultation_result_model.dart';
 import '../models/midwife_model.dart';
 import '../models/slot_model.dart';
@@ -8,12 +11,13 @@ import '../models/user_model.dart';
 
 class BookingRepository {
   final _uuid = const Uuid();
+  final ApiClient? _apiClient;
 
   // In-memory list booking untuk demo end-to-end
   final List<Booking> _bookings = [];
   final Map<String, ConsultationResult> _results = {};
 
-  BookingRepository() {
+  BookingRepository({ApiClient? apiClient}) : _apiClient = apiClient {
     _seedInitialData();
   }
 
@@ -29,12 +33,15 @@ class BookingRepository {
       midwifeName: 'Bdn. Siti Rahmawati, S.Tr.Keb',
       slotId: 'slot_prev_01',
       slotStartAt: now.subtract(const Duration(days: 3)),
-      complaint: 'Sering pusing ringan di pagi hari dan kram perut sesekali saat bangun tidur.',
+      complaint:
+          'Sering pusing ringan di pagi hari dan kram perut sesekali saat bangun tidur.',
       amount: 50000,
       status: 'completed',
       paymentId: 'mayar_pay_9981',
       consultationStartedAt: now.subtract(const Duration(days: 3, minutes: 40)),
-      consultationCompletedAt: now.subtract(const Duration(days: 3, minutes: 10)),
+      consultationCompletedAt: now.subtract(
+        const Duration(days: 3, minutes: 10),
+      ),
       createdAt: now.subtract(const Duration(days: 4)),
     );
 
@@ -45,10 +52,14 @@ class BookingRepository {
       bookingId: completedBooking.id,
       patientName: completedBooking.patientName,
       midwifeName: completedBooking.midwifeName,
-      summary: 'Pasien trimester 2 mengeluhkan pusing ortostatik ringan dan kram ligamen (round ligament pain). Tanda vital dalam batas aman.',
-      advice: 'Hindari perubahan posisi mendadak dari tidur ke berdiri. Cukupi asupan cairan minimal 2.5 liter per hari. Lakukan peregangan pinggul secara perlahan.',
-      supplementNote: 'Lanjutkan Tablet Tambah Darah (Fe) 1x1 malam hari dan Kalsium 500mg 1x1 pagi hari setelah makan.',
-      followUp: 'Jika pusing disertai pandangan kabur atau nyeri ulu hati hebat, segera periksa ke fasilitas kesehatan darurat. Kontrol ANC rutin 2 minggu lagi.',
+      summary:
+          'Pasien trimester 2 mengeluhkan pusing ortostatik ringan dan kram ligamen (round ligament pain). Tanda vital dalam batas aman.',
+      advice:
+          'Hindari perubahan posisi mendadak dari tidur ke berdiri. Cukupi asupan cairan minimal 2.5 liter per hari. Lakukan peregangan pinggul secara perlahan.',
+      supplementNote:
+          'Lanjutkan Tablet Tambah Darah (Fe) 1x1 malam hari dan Kalsium 500mg 1x1 pagi hari setelah makan.',
+      followUp:
+          'Jika pusing disertai pandangan kabur atau nyeri ulu hati hebat, segera periksa ke fasilitas kesehatan darurat. Kontrol ANC rutin 2 minggu lagi.',
       savedBy: 'Bdn. Siti Rahmawati, S.Tr.Keb',
       completedAt: now.subtract(const Duration(days: 3, minutes: 10)),
     );
@@ -62,7 +73,8 @@ class BookingRepository {
       midwifeName: 'Bdn. Siti Rahmawati, S.Tr.Keb',
       slotId: 'slot_today_01',
       slotStartAt: now.add(const Duration(hours: 1)),
-      complaint: 'Perut terasa kencang saat lelah beraktivitas kantor, ingin konsultasi persiapan nutrisi trimester 3.',
+      complaint:
+          'Perut terasa kencang saat lelah beraktivitas kantor, ingin konsultasi persiapan nutrisi trimester 3.',
       amount: 50000,
       status: 'paid_pending_midwife',
       paymentId: 'mayar_sandbox_pay_7721',
@@ -94,6 +106,32 @@ class BookingRepository {
     return _results[bookingId];
   }
 
+  Future<BookingHold> createBookingRequest({
+    required ConsultationSlot slot,
+    required String complaint,
+  }) async {
+    final apiClient = _apiClient;
+    if (apiClient == null) {
+      throw StateError('The booking API client is not configured.');
+    }
+
+    final response = await apiClient.post(
+      ApiEndpoints.bookings,
+      data: {'slot_id': slot.id, 'complaint': complaint},
+    );
+
+    final payload = response.data;
+    if (payload is! Map || payload['data'] is! Map) {
+      throw const FormatException(
+        'The API returned an invalid booking response.',
+      );
+    }
+
+    return BookingHold.fromJson(
+      Map<String, dynamic>.from(payload['data'] as Map),
+    );
+  }
+
   // FR-06: Buat booking + hold slot -> awaiting_payment
   Future<Booking> createBooking({
     required AppUser patient,
@@ -110,7 +148,8 @@ class BookingRepository {
 
     final bookingId = 'book_${_uuid.v4().substring(0, 8)}';
     final paymentId = 'mayar_sb_${_uuid.v4().substring(0, 8)}';
-    final checkoutUrl = 'https://sandbox.mayar.id/checkout/telebunda-$bookingId';
+    final checkoutUrl =
+        'https://sandbox.mayar.id/checkout/telebunda-$bookingId';
 
     final booking = Booking(
       id: bookingId,
@@ -139,9 +178,7 @@ class BookingRepository {
     final index = _bookings.indexWhere((b) => b.id == bookingId);
     if (index == -1) throw Exception('Booking tidak ditemukan');
 
-    final updated = _bookings[index].copyWith(
-      status: 'paid_pending_midwife',
-    );
+    final updated = _bookings[index].copyWith(status: 'paid_pending_midwife');
     _bookings[index] = updated;
     return updated;
   }
@@ -153,9 +190,7 @@ class BookingRepository {
     final index = _bookings.indexWhere((b) => b.id == bookingId);
     if (index == -1) throw Exception('Booking tidak ditemukan');
 
-    final updated = _bookings[index].copyWith(
-      status: 'confirmed',
-    );
+    final updated = _bookings[index].copyWith(status: 'confirmed');
     _bookings[index] = updated;
     return updated;
   }
@@ -300,9 +335,12 @@ class BookingNotifier extends StateNotifier<List<Booking>> {
   }
 }
 
-final bookingRepositoryProvider = Provider<BookingRepository>((ref) => BookingRepository());
+final bookingRepositoryProvider = Provider<BookingRepository>(
+  (ref) => BookingRepository(apiClient: ref.watch(apiClientProvider)),
+);
 
-final bookingsListProvider = StateNotifierProvider<BookingNotifier, List<Booking>>((ref) {
-  final repo = ref.watch(bookingRepositoryProvider);
-  return BookingNotifier(repo);
-});
+final bookingsListProvider =
+    StateNotifierProvider<BookingNotifier, List<Booking>>((ref) {
+      final repo = ref.watch(bookingRepositoryProvider);
+      return BookingNotifier(repo);
+    });

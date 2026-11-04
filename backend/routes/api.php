@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\MidwifeController;
 use App\Http\Middleware\RequirePatientRole;
 use App\Http\Middleware\VerifyFirebaseIdToken;
@@ -18,5 +19,8 @@ Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::middleware(RequirePatientRole::class)->group(function (): void {
         Route::get('/midwives', [MidwifeController::class, 'index'])->name('midwives.index');
         Route::get('/midwives/{id}/slots', [MidwifeController::class, 'slots'])->name('midwives.slots');
+        Route::post('/bookings', [BookingController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('bookings.store');
     });
 });

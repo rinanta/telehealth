@@ -44,6 +44,7 @@ class MidwifeCatalogEndpointTest extends TestCase
                 'display_name' => 'Bidan Terverifikasi',
                 'credential_label' => 'Bidan',
                 'bio' => 'Pendampingan kebidanan.',
+                'consultation_fee' => 75000,
                 'active' => true,
                 'verification_status' => 'verified',
                 'str_number' => 'must-not-be-exposed',
@@ -73,6 +74,7 @@ class MidwifeCatalogEndpointTest extends TestCase
                     'display_name' => 'Bidan Terverifikasi',
                     'credential_label' => 'Bidan',
                     'bio' => 'Pendampingan kebidanan.',
+                    'price' => 75000,
                 ]],
             ]);
     }

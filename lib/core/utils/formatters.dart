@@ -1,6 +1,8 @@
 import 'package:intl/intl.dart';
 
 class Formatters {
+  static const Duration _jakartaUtcOffset = Duration(hours: 7);
+
   static final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'id_ID',
     symbol: 'Rp ',
@@ -13,17 +15,17 @@ class Formatters {
 
   static String formatDate(DateTime dateTime) {
     final formatter = DateFormat('EEEE, d MMMM yyyy', 'id_ID');
-    return formatter.format(dateTime);
+    return formatter.format(_toJakartaTime(dateTime));
   }
 
   static String formatShortDate(DateTime dateTime) {
     final formatter = DateFormat('d MMM yyyy', 'id_ID');
-    return formatter.format(dateTime);
+    return formatter.format(_toJakartaTime(dateTime));
   }
 
   static String formatTime(DateTime dateTime) {
     final formatter = DateFormat('HH:mm', 'id_ID');
-    return '${formatter.format(dateTime)} WIB';
+    return '${formatter.format(_toJakartaTime(dateTime))} WIB';
   }
 
   static String formatDateTime(DateTime dateTime) {
@@ -35,5 +37,9 @@ class Formatters {
     final minutes = secondsRemaining ~/ 60;
     final seconds = secondsRemaining % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  static DateTime _toJakartaTime(DateTime instant) {
+    return instant.toUtc().add(_jakartaUtcOffset);
   }
 }

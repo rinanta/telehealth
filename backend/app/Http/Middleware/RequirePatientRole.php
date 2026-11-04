@@ -34,6 +34,8 @@ class RequirePatientRole
             ], 403);
         }
 
+        $request->attributes->set('firebase_profile', $profile);
+
         return $next($request);
     }
 }

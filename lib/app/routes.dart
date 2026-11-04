@@ -10,6 +10,7 @@ import '../features/auth/screens/splash_screen.dart';
 import '../features/booking/screens/booking_form_screen.dart';
 import '../features/booking/screens/booking_status_screen.dart';
 import '../features/booking/screens/mayar_checkout_screen.dart';
+import '../data/models/booking_hold_model.dart';
 import '../features/consultation/screens/consultation_chat_screen.dart';
 import '../features/consultation_result/screens/consultation_result_screen.dart';
 import '../features/consultation_result/screens/midwife_result_form_screen.dart';
@@ -111,7 +112,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/booking-status/:bookingId',
         builder: (context, state) {
           final bookingId = state.pathParameters['bookingId'] ?? '';
-          return BookingStatusScreen(bookingId: bookingId);
+          final bookingHold = state.extra;
+          return BookingStatusScreen(
+            bookingId: bookingId,
+            bookingHold: bookingHold is BookingHold ? bookingHold : null,
+          );
         },
       ),
       GoRoute(

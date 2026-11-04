@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\BookingConfigurationException;
+use App\Exceptions\SlotUnavailableException;
 use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Kreait\Firebase\JWT\IdTokenVerifier;
 use RuntimeException;
 
@@ -95,6 +98,262 @@ class FirebaseService
         ]);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function createBookingWithSlotHold(
+        string $patientId,
+        string $slotId,
+        string $complaint,
+    ): array {
+        $holdMinutes = (int) config('booking.hold_minutes', 15);
+        if ($holdMinutes < 1) {
+            throw new RuntimeException('BOOKING_HOLD_MINUTES must be a positive integer.');
+        }
+
+        $bookingId = (string) Str::uuid();
+        $transaction = $this->beginFirestoreTransaction();
+        $slot = $this->getDocumentInTransaction('slots', $slotId, $transaction);
+
+        if ($slot === null) {
+            throw new SlotUnavailableException;
+        }
+
+        $midwifeId = $slot['midwife_id'] ?? null;
+        $slotStart = $slot['start_at'] ?? null;
+        $slotEnd = $slot['end_at'] ?? null;
+        $slotStartTimestamp = is_string($slotStart) ? strtotime($slotStart) : false;
+        $slotEndTimestamp = is_string($slotEnd) ? strtotime($slotEnd) : false;
+        $nowTimestamp = now('UTC')->getTimestamp();
+
+        if (
+            ! is_string($midwifeId)
+            || $slotStartTimestamp === false
+            || $slotEndTimestamp === false
+            || $slotStartTimestamp <= $nowTimestamp
+            || $slotEndTimestamp - $slotStartTimestamp !== 1800
+        ) {
+            throw new SlotUnavailableException;
+        }
+
+        $expiredBooking = null;
+        if (($slot['status'] ?? null) === 'available') {
+            if (! empty($slot['hold_booking_id']) || ! empty($slot['hold_expires_at'])) {
+                throw new SlotUnavailableException;
+            }
+        } elseif (($slot['status'] ?? null) === 'held') {
+            $holdExpiresAt = $slot['hold_expires_at'] ?? null;
+            $holdExpiresTimestamp = is_string($holdExpiresAt) ? strtotime($holdExpiresAt) : false;
+            $existingBookingId = $slot['hold_booking_id'] ?? null;
+
+            if (
+                $holdExpiresTimestamp === false
+                || $holdExpiresTimestamp > $nowTimestamp
+                || ! is_string($existingBookingId)
+                || $existingBookingId === ''
+            ) {
+                throw new SlotUnavailableException;
+            }
+
+            $expiredBooking = $this->getDocumentInTransaction(
+                'bookings',
+                $existingBookingId,
+                $transaction,
+            );
+
+            if (
+                $expiredBooking !== null
+                && (
+                    ($expiredBooking['slot_id'] ?? null) !== $slotId
+                    || ! in_array(
+                        $expiredBooking['status'] ?? null,
+                        ['awaiting_payment', 'expired', 'payment_failed', 'cancelled'],
+                        true,
+                    )
+                    || (
+                        ($expiredBooking['status'] ?? null) === 'awaiting_payment'
+                        && ! $this->isExpiredTimestamp(
+                            $expiredBooking['hold_expires_at'] ?? null,
+                            $nowTimestamp,
+                        )
+                    )
+                )
+            ) {
+                throw new SlotUnavailableException;
+            }
+        } else {
+            throw new SlotUnavailableException;
+        }
+
+        $midwife = $this->getDocumentInTransaction('midwives', $midwifeId, $transaction);
+        $consultationFee = $midwife['consultation_fee'] ?? null;
+
+        if (
+            $midwife === null
+            || ($midwife['active'] ?? null) !== true
+            || ($midwife['verification_status'] ?? null) !== 'verified'
+        ) {
+            throw new BookingConfigurationException;
+        }
+
+        if (! is_int($consultationFee) || $consultationFee < 1) {
+            throw new BookingConfigurationException;
+        }
+
+        $createdAt = now('UTC');
+        $holdExpiresAt = $createdAt->copy()->addMinutes($holdMinutes);
+        $slotPath = $this->documentName('slots', $slotId);
+        $bookingPath = $this->documentName('bookings', $bookingId);
+        $writes = [
+            [
+                'update' => [
+                    'name' => $slotPath,
+                    'fields' => [
+                        'status' => ['stringValue' => 'held'],
+                        'hold_booking_id' => ['stringValue' => $bookingId],
+                        'hold_expires_at' => ['timestampValue' => $holdExpiresAt->toIso8601String()],
+                    ],
+                ],
+                'updateMask' => [
+                    'fieldPaths' => ['status', 'hold_booking_id', 'hold_expires_at'],
+                ],
+            ],
+        ];
+
+        if (
+            $expiredBooking !== null
+            && ($expiredBooking['status'] ?? null) === 'awaiting_payment'
+        ) {
+            $writes[] = $this->updateWrite(
+                'bookings',
+                (string) $expiredBooking['id'],
+                [
+                    'status' => ['stringValue' => 'expired'],
+                    'expired_at' => ['timestampValue' => $createdAt->toIso8601String()],
+                ],
+                ['status', 'expired_at'],
+            );
+        }
+
+        $writes[] = [
+            'update' => [
+                'name' => $bookingPath,
+                'fields' => [
+                    'patient_id' => ['stringValue' => $patientId],
+                    'midwife_id' => ['stringValue' => $midwifeId],
+                    'slot_id' => ['stringValue' => $slotId],
+                    'complaint' => ['stringValue' => $complaint],
+                    'amount' => ['integerValue' => (string) $consultationFee],
+                    'status' => ['stringValue' => 'awaiting_payment'],
+                    'payment_id' => ['nullValue' => null],
+                    'created_at' => ['timestampValue' => $createdAt->toIso8601String()],
+                    'hold_expires_at' => ['timestampValue' => $holdExpiresAt->toIso8601String()],
+                ],
+            ],
+            'updateMask' => [
+                'fieldPaths' => [
+                    'patient_id',
+                    'midwife_id',
+                    'slot_id',
+                    'complaint',
+                    'amount',
+                    'status',
+                    'payment_id',
+                    'created_at',
+                    'hold_expires_at',
+                ],
+            ],
+            'currentDocument' => ['exists' => false],
+        ];
+
+        if (! $this->commitFirestoreTransaction($transaction, $writes)) {
+            throw new SlotUnavailableException;
+        }
+
+        return [
+            'id' => $bookingId,
+            'patient_id' => $patientId,
+            'midwife_id' => $midwifeId,
+            'slot_id' => $slotId,
+            'slot_start_at' => $slotStart,
+            'amount' => $consultationFee,
+            'status' => 'awaiting_payment',
+            'created_at' => $createdAt->toIso8601String(),
+            'hold_expires_at' => $holdExpiresAt->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getExpiredBookingHolds(): array
+    {
+        return $this->runFirestoreQuery('bookings', [
+            ['field' => 'status', 'value' => ['stringValue' => 'awaiting_payment']],
+            [
+                'field' => 'hold_expires_at',
+                'operator' => 'LESS_THAN_OR_EQUAL',
+                'value' => ['timestampValue' => now('UTC')->toIso8601String()],
+            ],
+        ]);
+    }
+
+    public function expireBookingHold(string $bookingId): bool
+    {
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+        $now = now('UTC');
+
+        if (
+            $booking === null
+            || ($booking['status'] ?? null) !== 'awaiting_payment'
+            || ! $this->isExpiredTimestamp($booking['hold_expires_at'] ?? null, $now->getTimestamp())
+        ) {
+            return false;
+        }
+
+        $slotId = $booking['slot_id'] ?? null;
+        if (! is_string($slotId) || $slotId === '') {
+            return false;
+        }
+
+        $slot = $this->getDocumentInTransaction('slots', $slotId, $transaction);
+        $writes = [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'status' => ['stringValue' => 'expired'],
+                    'expired_at' => ['timestampValue' => $now->toIso8601String()],
+                ],
+                ['status', 'expired_at'],
+            ),
+        ];
+
+        if (
+            ($slot['status'] ?? null) === 'held'
+            && ($slot['hold_booking_id'] ?? null) === $bookingId
+        ) {
+            if (! $this->isExpiredTimestamp($slot['hold_expires_at'] ?? null, $now->getTimestamp())) {
+                return false;
+            }
+
+            $writes[] = [
+                'update' => [
+                    'name' => $this->documentName('slots', $slotId),
+                    'fields' => [
+                        'status' => ['stringValue' => 'available'],
+                    ],
+                ],
+                'updateMask' => [
+                    'fieldPaths' => ['status', 'hold_booking_id', 'hold_expires_at'],
+                ],
+            ];
+        }
+
+        return $this->commitFirestoreTransaction($transaction, $writes);
+    }
+
     private function idTokenVerifier(): IdTokenVerifier
     {
         $projectId = $this->projectId();
@@ -129,7 +388,7 @@ class FirebaseService
         return base_path($path);
     }
 
-    private function firestoreAccessToken(): string
+    protected function firestoreAccessToken(): string
     {
         $projectId = $this->projectId();
         $credentialsPath = $this->credentialsPath();
@@ -222,6 +481,126 @@ class FirebaseService
         }
 
         return $documents;
+    }
+
+    private function beginFirestoreTransaction(): string
+    {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->post($this->documentsUrl().':beginTransaction', [
+                'options' => ['readWrite' => new \stdClass],
+            ]);
+        $response->throw();
+
+        $transaction = $response->json('transaction');
+        if (! is_string($transaction) || $transaction === '') {
+            throw new RuntimeException('Firestore did not return a transaction ID.');
+        }
+
+        return $transaction;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getDocumentInTransaction(
+        string $collection,
+        string $documentId,
+        string $transaction,
+    ): ?array {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->get(
+                $this->documentUrl($collection, $documentId),
+                ['transaction' => $transaction],
+            );
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        $response->throw();
+        $document = $response->json();
+        if (! is_array($document)) {
+            throw new RuntimeException('Firestore returned an invalid document response.');
+        }
+
+        $fields = $this->decodeFields(
+            is_array($document['fields'] ?? null) ? $document['fields'] : [],
+        );
+        $fields['id'] = $documentId;
+        $fields['update_time'] = $document['updateTime'] ?? null;
+
+        return $fields;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $writes
+     */
+    private function commitFirestoreTransaction(string $transaction, array $writes): bool
+    {
+        $response = Http::withToken($this->firestoreAccessToken())
+            ->acceptJson()
+            ->connectTimeout(3)
+            ->timeout(15)
+            ->post($this->documentsUrl().':commit', [
+                'transaction' => $transaction,
+                'writes' => $writes,
+            ]);
+
+        if ($response->status() === 409) {
+            return false;
+        }
+
+        $response->throw();
+
+        return true;
+    }
+
+    private function documentName(string $collection, string $documentId): string
+    {
+        return $this->documentsResourceName().'/'.$collection.'/'.rawurlencode($documentId);
+    }
+
+    private function documentUrl(string $collection, string $documentId): string
+    {
+        return $this->documentsUrl().'/'.$collection.'/'.rawurlencode($documentId);
+    }
+
+    private function documentsResourceName(): string
+    {
+        return substr($this->documentsUrl(), strlen('https://firestore.googleapis.com/v1/'));
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $fields
+     * @param  list<string>  $fieldPaths
+     * @return array<string, mixed>
+     */
+    private function updateWrite(
+        string $collection,
+        string $documentId,
+        array $fields,
+        array $fieldPaths,
+    ): array {
+        return [
+            'update' => [
+                'name' => $this->documentName($collection, $documentId),
+                'fields' => $fields,
+            ],
+            'updateMask' => ['fieldPaths' => $fieldPaths],
+        ];
+    }
+
+    private function isExpiredTimestamp(mixed $timestamp, int $now): bool
+    {
+        $expiresAt = is_string($timestamp) ? strtotime($timestamp) : false;
+
+        return $expiresAt !== false && $expiresAt <= $now;
     }
 
     private function documentsUrl(): string

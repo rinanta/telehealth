@@ -68,7 +68,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Booking                 | Alur normal: awaiting_payment -> paid_pending_midwife -> confirmed -> active -> completed. Alur akhir/pengecualian: awaiting_payment -> payment_failed / expired / cancelled; paid_pending_midwife -> rejected; confirmed -> no_show. Setiap transisi divalidasi backend. |
 | Pembayaran              | created / pending / paid / failed / expired / refunded_test (jika didukung skenario sandbox); paid hanya dari verifikasi server             |
-| Slot                    | Ditahan 15 menit sejak booking dibuat; dilepas saat pembayaran gagal atau hold kedaluwarsa. Lama hold dapat dikonfigurasi server. Pembayaran yang terverifikasi setelah hold dilepas harus direkonsiliasi dan tidak otomatis mengambil slot kembali. |
+| Slot                    | Ditahan secara atomik 15 menit sejak booking dibuat; satu slot hanya boleh memiliki satu booking aktif. Status slot menjadi `held` dengan `hold_booking_id` dan `hold_expires_at`. Hold dilepas saat pembayaran gagal atau kedaluwarsa. Scheduler backend memeriksa hold kedaluwarsa sekurangnya setiap menit dan hanya melepas slot bila booking masih `awaiting_payment` serta slot masih menunjuk booking tersebut. Durasi dapat dikonfigurasi server (`BOOKING_HOLD_MINUTES`, default 15). Pembayaran valid yang datang setelah hold dilepas direkonsiliasi dan tidak otomatis mengambil slot kembali. |
+| Tarif konsultasi        | `midwives/{uid}.consultation_fee` adalah integer Rupiah positif yang hanya ditetapkan proses admin tepercaya. Saat booking, backend membaca tarif ini dan menyalinnya ke `bookings.amount`; klien tidak boleh mengirim atau menentukan tarif. Bidan tanpa tarif valid belum dapat dipesan. |
 | Konsultasi              | Sesi normal 30 menit; started_at dan ends_at ditetapkan backend; hanya 1 sesi aktif per booking. |
 | Keterlambatan           | Toleransi 10 menit adalah jendela bidan untuk memulai sesi dari waktu jadwal; setelah itu tandai no_show dan lakukan penanganan/penjadwalan ulang manual. Toleransi tidak memperpanjang durasi sesi. |
 | Timer                   | Notifikasi pada 5 menit tersisa. Saat ends_at tercapai, backend menolak pesan baru; sesi tetap perlu difinalisasi bidan dengan hasil konsultasi. |
@@ -100,7 +101,8 @@ Catatan keamanan: pada registrasi, pilihan "Bidan" hanya membuat permohonan deng
 **Keputusan teknis implementasi MVP (disepakati tim):**
 
 - **Autentikasi dan role:** Flutter membuat akun/melakukan login melalui Firebase Authentication. Setiap permintaan API mengirim `Authorization: Bearer <Firebase ID token>`; Laravel memverifikasi token dan membaca profil serta role tepercaya dari Firestore. Endpoint registrasi menerima pasien atau permohonan bidan; backend menetapkan role/status yang diizinkan dan tidak menerima `verified` atau role istimewa dari klien. Hanya proses admin tepercaya yang dapat memverifikasi bidan.
-- **Hold dan pembayaran terlambat:** gunakan hold 15 menit seperti Bagian 5. Jika belum ada pembayaran terverifikasi saat hold habis, tandai booking expired dan lepaskan slot. Jika notifikasi pembayaran valid tiba setelah slot dilepas/booking expired, jangan mengambil slot yang mungkin sudah dipesan orang lain; tandai untuk rekonsiliasi dan penanganan manual/refund sandbox sesuai dukungan Mayar. Webhook diproses idempoten.
+- **Hold dan pembayaran terlambat:** `POST /api/bookings` menjalankan pembacaan slot, pemeriksaan bidan aktif/terverifikasi dan tarif, pembuatan booking `awaiting_payment`, serta perubahan slot menjadi `held` dalam satu transaksi Firestore. Jika belum ada pembayaran terverifikasi saat hold habis, scheduler backend (wajib dijalankan melalui `php artisan schedule:run` setiap menit atau proses `php artisan schedule:work`) menandai booking `expired` dan melepas slot dalam transaksi yang memeriksa kembali kepemilikan hold. Jika notifikasi pembayaran valid tiba setelah slot dilepas/booking expired, jangan mengambil slot yang mungkin sudah dipesan orang lain; tandai untuk rekonsiliasi dan penanganan manual/refund sandbox sesuai dukungan Mayar. Webhook diproses idempoten.
+- **Tarif booking:** proses admin tepercaya mengisi `midwives/{uid}.consultation_fee` sebagai integer Rupiah positif. Field ini boleh ditampilkan di katalog; backend selalu membaca ulang nilainya di dalam transaksi booking dan menyalinnya ke `bookings.amount`. Tarif dari request klien diabaikan. Bidan tanpa tarif valid tidak dapat dipesan sampai tarif diatur.
 - **Penolakan dan no-show setelah pembayaran:** utamakan penjadwalan ulang yang disetujui pasien. Jika tidak dapat dijadwalkan ulang, catat kasus untuk bantuan/refund sandbox secara manual, bergantung pada kemampuan provider; MVP tidak menjanjikan refund otomatis sebelum kemampuan Mayar dikonfirmasi. Tidak ada pembayaran uang sungguhan pada MVP.
 - **Waktu sesi:** bidan hanya dapat memulai pada/setelah waktu slot dan paling lambat 10 menit sesudahnya. Backend menetapkan `started_at` dan `ends_at = started_at + 30 menit`; waktu perangkat hanya untuk tampilan countdown. Setelah `ends_at`, backend menolak pesan baru, tetapi bidan tetap dapat menyimpan hasil untuk menutup sesi.
 - **Chat realtime dan otorisasi:** rekomendasi MVP adalah Laravel memvalidasi setiap pesan (identitas peserta, booking berstatus active, dan waktu sebelum `ends_at`) lalu menulis ke Firestore melalui Admin SDK; Flutter menerima pesan realtime dengan listener Firestore. Security Rules mengizinkan pembacaan hanya untuk pasien/bidan yang tercatat sebagai peserta sesi dan menolak penulisan langsung dari klien. Riwayat pesan tetap dapat dibaca peserta setelah sesi selesai.
@@ -118,16 +120,16 @@ Laravel adalah backend pusat, bukan database SQL tambahan. Perlu PHP 8.x, Compos
 | Collection / subcollection              | Field utama                                                                                     |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | users/{uid}                             | uid, name, email, role, verified, created_at                                                    |
-| midwives/{uid}                          | display_name, credential_label, bio, active, verification_status                                |
+| midwives/{uid}                          | display_name, credential_label, bio, active, verification_status, consultation_fee (Rupiah integer) |
 | slots/{slotId}                          | midwife_id, start_at, end_at, status, hold_booking_id, hold_expires_at                          |
-| bookings/{bookingId}                    | patient_id, midwife_id, slot_id, complaint, amount, status, payment_id, created_at              |
+| bookings/{bookingId}                    | patient_id, midwife_id, slot_id, complaint, amount, status, payment_id, created_at, hold_expires_at |
 | payments/{paymentId}                    | booking_id, provider=mayar, environment=sandbox, external_id, status, checkout_url, verified_at |
 | consultations/{consultationId}          | booking_id, patient_id, midwife_id, started_at, ends_at, status, completed_at                   |
 | consultations/{id}/messages/{messageId} | sender_id, text, sent_at, type=text                                                             |
 | consultation_results/{id}               | consultation_id, summary, advice, supplement_note_optional, follow_up, saved_by, completed_at   |
 | ai_chats/{uid}/messages/{messageId}     | Tidak dibuat/disimpan pada MVP; percakapan AI hanya sementara di aplikasi                       |
 
-Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date; slots by midwife/date/status; messages by sent_at. Gunakan timestamp UTC di database dan tampilkan WIB pada antarmuka.
+Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date; booking by status/hold_expires_at untuk pemrosesan hold kedaluwarsa; slots by midwife/date/status; messages by sent_at. Gunakan timestamp UTC di database dan tampilkan WIB pada antarmuka.
 
 # 9. Kontrak API Laravel (rancangan, bukan endpoint resmi Mayar/Gemini)
 
@@ -137,7 +139,7 @@ Indeks yang diperlukan: booking by patient/date; booking by midwife/status/date;
 | GET /api/me                           | Semua; role dan profil                                                  |
 | GET /api/midwives                     | Pasien; daftar bidan aktif                                              |
 | GET /api/midwives/{id}/slots          | Pasien; slot tersedia                                                   |
-| POST /api/bookings                    | Pasien; buat booking + hold slot                                        |
+| POST /api/bookings                    | Pasien; body `slot_id` dan `complaint`; buat booking `awaiting_payment` + hold atomik 15 menit. `amount` diambil backend dari tarif bidan, tidak diterima dari klien. |
 | GET /api/bookings                     | Pasien/bidan; data berdasarkan role                                     |
 | POST /api/bookings/{id}/checkout      | Pasien; buat checkout Mayar Sandbox                                     |
 | POST /api/webhooks/mayar              | Mayar; callback server, verifikasi signature/payload sesuai dokumentasi |
