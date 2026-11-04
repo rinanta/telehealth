@@ -1,8 +1,13 @@
 /// Kontrak rute endpoint REST API Laravel TeleBunda AI (Sesuai PRD Bab 9)
 class ApiEndpoints {
-  // Base URL konfigurasi lingkungan DEV/STAGING
-  static const String baseUrl =
-      'http://192.168.18.5:8000/api'; // ini kalo 10.0.2.2 untuk emulator Android
+  // Default memakai tunnel HTTPS dev yang sedang aktif.
+  // Override dengan --dart-define=API_BASE_URL=... bila URL tunnel berubah.
+  // Lokal emulator: http://10.0.2.2:8000/api
+  // Perangkat fisik di LAN: gunakan IP komputer yang menjalankan Laravel.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://unaccessible-kori-administratively.ngrok-free.dev/api',
+  );
 
   // Auth & Profile
   static const String register = '/auth/register';

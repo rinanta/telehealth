@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AiChatController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
 use App\Http\Controllers\Api\ConsultationChatController;
@@ -27,6 +28,9 @@ Route::post('/webhooks/midtrans', [MidtransWebhookController::class, 'handle'])
 Route::middleware(VerifyFirebaseIdToken::class)->group(function (): void {
     Route::post('/auth/register', [AuthController::class, 'register'])->name('auth.register');
     Route::get('/me', [AuthController::class, 'me'])->name('auth.me');
+    Route::post('/ai/chat', [AiChatController::class, 'store'])
+        ->middleware('throttle:15,1')
+        ->name('ai.chat.store');
 
     Route::middleware(RequirePatientRole::class)->group(function (): void {
         Route::get('/midwives', [MidwifeController::class, 'index'])->name('midwives.index');
