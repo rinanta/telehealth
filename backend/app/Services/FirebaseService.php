@@ -157,17 +157,54 @@ class FirebaseService
 
     public function acceptBookingForMidwife(string $bookingId, string $midwifeId): string
     {
-        return $this->transitionMidwifeBooking(
-            $bookingId,
-            $midwifeId,
-            ['paid_pending_midwife'],
-            [
-                'status' => ['stringValue' => 'confirmed'],
-                'confirmed_at' => ['timestampValue' => now('UTC')->toIso8601String()],
-            ],
-            ['status', 'confirmed_at'],
-            'accepted',
-        );
+        $transaction = $this->beginFirestoreTransaction();
+        $booking = $this->getDocumentInTransaction('bookings', $bookingId, $transaction);
+
+        if ($booking === null) {
+            return 'not_found';
+        }
+
+        if (($booking['midwife_id'] ?? null) !== $midwifeId) {
+            return 'not_owned';
+        }
+
+        if (($booking['status'] ?? null) !== 'paid_pending_midwife') {
+            return 'not_pending';
+        }
+
+        $slotStartTimestamp = $this->parseTimestamp($booking['slot_start_at'] ?? null);
+        $now = now('UTC');
+        if ($slotStartTimestamp === null) {
+            return 'invalid_schedule';
+        }
+
+        if ($slotStartTimestamp + (10 * 60) <= $now->getTimestamp()) {
+            $marked = $this->commitFirestoreTransaction($transaction, [
+                $this->updateWrite(
+                    'bookings',
+                    $bookingId,
+                    [
+                        'status' => ['stringValue' => 'no_show'],
+                        'no_show_at' => ['timestampValue' => $now->toIso8601String()],
+                    ],
+                    ['status', 'no_show_at'],
+                ),
+            ]);
+
+            return $marked ? 'no_show' : 'conflict';
+        }
+
+        return $this->commitFirestoreTransaction($transaction, [
+            $this->updateWrite(
+                'bookings',
+                $bookingId,
+                [
+                    'status' => ['stringValue' => 'confirmed'],
+                    'confirmed_at' => ['timestampValue' => $now->toIso8601String()],
+                ],
+                ['status', 'confirmed_at'],
+            ),
+        ]) ? 'accepted' : 'conflict';
     }
 
     public function rejectBookingForMidwife(
@@ -206,12 +243,33 @@ class FirebaseService
             return 'not_pending';
         }
 
-        $slotStart = $booking['slot_start_at'] ?? null;
-        if (! is_string($slotStart) || strtotime($slotStart) > now('UTC')->getTimestamp()) {
+        $slotStartTimestamp = $this->parseTimestamp($booking['slot_start_at'] ?? null);
+        $now = now('UTC');
+        if ($slotStartTimestamp === null) {
+            return 'invalid_schedule';
+        }
+
+        if ($slotStartTimestamp > $now->getTimestamp()) {
             return 'not_ready';
         }
 
-        $startedAt = now('UTC');
+        if ($slotStartTimestamp + (10 * 60) <= $now->getTimestamp()) {
+            $marked = $this->commitFirestoreTransaction($transaction, [
+                $this->updateWrite(
+                    'bookings',
+                    $bookingId,
+                    [
+                        'status' => ['stringValue' => 'no_show'],
+                        'no_show_at' => ['timestampValue' => $now->toIso8601String()],
+                    ],
+                    ['status', 'no_show_at'],
+                ),
+            ]);
+
+            return $marked ? 'no_show' : 'conflict';
+        }
+
+        $startedAt = $now;
         $endsAt = $startedAt->copy()->addMinutes(30);
 
         return $this->commitFirestoreTransaction($transaction, [
@@ -673,6 +731,8 @@ class FirebaseService
 
     /**
      * Ambil data dokumen midwives/{midwifeId} untuk manajemen profil bidan.
+     * Jika dokumen katalog belum dibuat, gunakan profil users sebagai fallback
+     * agar bidan tetap bisa mengatur profil dan tarifnya sendiri.
      *
      * @return array<string, mixed>|null
      */
@@ -684,16 +744,29 @@ class FirebaseService
             ->timeout(15)
             ->get($this->documentUrl('midwives', $midwifeId));
 
-        if ($response->status() === 404) {
+        if ($response->status() !== 404) {
+            $response->throw();
+            $midwife = $this->decodeFields($response->json('fields', []));
+            $midwife['id'] = $midwifeId;
+
+            return $midwife;
+        }
+
+        $user = $this->getUserProfile($midwifeId);
+        if ($user === null || ($user['role'] ?? null) !== 'midwife') {
             return null;
         }
 
-        $response->throw();
-
-        $midwife = $this->decodeFields($response->json('fields', []));
-        $midwife['id'] = $midwifeId;
-
-        return $midwife;
+        return [
+            'id' => $midwifeId,
+            'display_name' => $user['name'] ?? null,
+            'credential_label' => $user['credential_label'] ?? null,
+            'bio' => null,
+            'active' => ($user['verified'] ?? false) === true,
+            'verification_status' => ($user['verified'] ?? false) === true
+                ? 'verified'
+                : 'pending_verification',
+        ];
     }
 
     /**
@@ -706,13 +779,29 @@ class FirebaseService
     {
         $transaction = $this->beginFirestoreTransaction();
         $midwife = $this->getDocumentInTransaction('midwives', $midwifeId, $transaction);
+        $fallback = $midwife ?? $this->getMidwifeProfile($midwifeId);
 
-        if ($midwife === null) {
+        if ($fallback === null) {
             return 'not_found';
         }
 
-        $fields = [];
-        $fieldPaths = [];
+        $fields = [
+            'display_name' => ['stringValue' => (string) ($fallback['display_name'] ?? '')],
+            'credential_label' => ['stringValue' => (string) ($fallback['credential_label'] ?? '')],
+            'active' => ['booleanValue' => ($fallback['active'] ?? false) === true],
+            'verification_status' => ['stringValue' => (string) ($fallback['verification_status'] ?? 'pending_verification')],
+        ];
+        $fieldPaths = ['display_name', 'credential_label', 'active', 'verification_status'];
+
+        if (is_string($fallback['bio'] ?? null)) {
+            $fields['bio'] = ['stringValue' => $fallback['bio']];
+            $fieldPaths[] = 'bio';
+        }
+
+        if (is_int($fallback['consultation_fee'] ?? null)) {
+            $fields['consultation_fee'] = ['integerValue' => (string) $fallback['consultation_fee']];
+            $fieldPaths[] = 'consultation_fee';
+        }
 
         if (array_key_exists('consultation_fee', $data) && is_int($data['consultation_fee'])) {
             $fields['consultation_fee'] = ['integerValue' => (string) $data['consultation_fee']];
@@ -1516,9 +1605,20 @@ class FirebaseService
 
     private function isExpiredTimestamp(mixed $timestamp, int $now): bool
     {
-        $expiresAt = is_string($timestamp) ? strtotime($timestamp) : false;
+        $expiresAt = $this->parseTimestamp($timestamp);
 
-        return $expiresAt !== false && $expiresAt <= $now;
+        return $expiresAt !== null && $expiresAt <= $now;
+    }
+
+    private function parseTimestamp(mixed $timestamp): ?int
+    {
+        if (! is_string($timestamp) || trim($timestamp) === '') {
+            return null;
+        }
+
+        $parsed = strtotime($timestamp);
+
+        return $parsed === false ? null : $parsed;
     }
 
     private function isFutureTimestamp(mixed $timestamp): bool

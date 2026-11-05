@@ -6,11 +6,11 @@ import '../../../data/models/midwife_model.dart';
 import '../../../data/models/slot_model.dart';
 import '../../../data/repositories/midwife_repository.dart';
 
-final myMidwifeProfileProvider = FutureProvider<Midwife>((ref) {
+final myMidwifeProfileProvider = FutureProvider.autoDispose<Midwife>((ref) {
   return ref.watch(midwifeRepositoryProvider).getMyProfile();
 });
 
-final myMidwifeSlotsProvider = FutureProvider<List<ConsultationSlot>>((ref) {
+final myMidwifeSlotsProvider = FutureProvider.autoDispose<List<ConsultationSlot>>((ref) {
   return ref.watch(midwifeRepositoryProvider).getMySlots();
 });
 

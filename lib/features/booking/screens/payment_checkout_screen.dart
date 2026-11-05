@@ -24,11 +24,9 @@ class PaymentCheckoutScreen extends ConsumerStatefulWidget {
 class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
   final _mobileController = TextEditingController();
   Timer? _timer;
+  Timer? _statusTimer;
   DateTime _now = DateTime.now();
-  bool _isProcessing = false;
-  String? _checkoutUrl;
-  String? _errorMessage;
-  String? _infoMessage;
+  bool _leavingAfterVerifiedPayment = false;
 
   @override
   void initState() {
@@ -36,14 +34,40 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+    _statusTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted && _checkoutUrl != null && !_isCheckingStatus) {
+        _refreshPaymentStatus();
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _statusTimer?.cancel();
     _mobileController.dispose();
     super.dispose();
   }
+
+  void _refreshPaymentStatus() {
+    ref.invalidate(serverBookingProvider(widget.bookingId));
+  }
+
+  Future<void> _redirectAfterPaid(BookingHold booking) async {
+    if (_leavingAfterVerifiedPayment || booking.status != 'paid_pending_midwife') return;
+    _leavingAfterVerifiedPayment = true;
+    _statusTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _infoMessage = 'Pembayaran terverifikasi. Mengarahkan ke beranda...');
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (mounted) context.go('/patient-dashboard');
+  }
+
+  bool _isProcessing = false;
+  bool _isCheckingStatus = false;
+  String? _checkoutUrl;
+  String? _errorMessage;
+  String? _infoMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +79,12 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
       body: bookingAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) => _buildLoadError(),
-        data: _buildCheckout,
+        data: (booking) {
+          if (booking.status == 'paid_pending_midwife') {
+            _redirectAfterPaid(booking);
+          }
+          return _buildCheckout(booking);
+        },
       ),
     );
   }
@@ -80,7 +109,7 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
               border: Border.all(color: const Color(0xFFBFDBFE)),
             ),
             child: const Text(
-              'Pembayaran diproses melalui halaman resmi Midtrans. Status booking hanya berubah setelah server memverifikasi pembayaran.',
+              'Pembayaran diproses melalui halaman resmi Midtrans. Status booking akan berubah otomatis setelah pembayaran berhasil dikonfirmasi.',
               style: TextStyle(
                 fontSize: 12,
                 color: Color(0xFF1E3A8A),
@@ -180,12 +209,46 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
                 ? 'Saya sudah membayar - cek status booking'
                 : 'Lihat status booking',
             isOutlined: true,
-            onPressed: () =>
-                context.pushReplacement('/booking-status/${booking.id}'),
+            isLoading: _isCheckingStatus,
+            onPressed: _isCheckingStatus
+                ? null
+                : () => _checkPaymentStatus(booking),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _checkPaymentStatus(BookingHold booking) async {
+    setState(() {
+      _isCheckingStatus = true;
+      _errorMessage = null;
+      _infoMessage = 'Memeriksa status pembayaran...';
+    });
+
+    try {
+      ref.invalidate(serverBookingProvider(booking.id));
+      final latest = await ref.read(serverBookingProvider(booking.id).future);
+      if (!mounted) return;
+      if (latest.status == 'awaiting_payment') {
+        setState(() {
+          _infoMessage = 'Pembayaran belum terverifikasi. Jika sudah membayar, tunggu beberapa saat lalu coba lagi.';
+        });
+      } else if (latest.status == 'expired') {
+        setState(() {
+          _errorMessage = 'Waktu pembayaran sudah berakhir. Silakan buat booking baru.';
+        });
+      } else {
+        setState(() {
+          _infoMessage = 'Status pembayaran sudah diperbarui.';
+        });
+      }
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() => _errorMessage = _checkoutErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isCheckingStatus = false);
+    }
   }
 
   Future<void> _createOrOpenCheckout(
@@ -307,7 +370,6 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
     final statusCode = error.response?.statusCode;
     final body = error.response?.data;
     final code = body is Map ? body['code'] : null;
-    final providerStatus = body is Map ? body['provider_status'] : null;
 
     return switch (code) {
       'booking_hold_expired' =>
@@ -317,25 +379,25 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
       'patient_profile_incomplete' =>
         'Profil pasien memerlukan nama dan email sebelum pembayaran.',
       'payment_not_configured' =>
-        'Midtrans belum dikonfigurasi di backend. Hubungi pengelola aplikasi.',
+        'Layanan pembayaran belum tersedia. Silakan coba lagi nanti.',
       'payment_auth_failed' =>
-        'Midtrans menolak Server Key. Pengelola perlu memeriksa MIDTRANS_SERVER_KEY dan MIDTRANS_ENVIRONMENT (Sandbox) di backend.',
+        'Layanan pembayaran sedang bermasalah. Silakan coba lagi nanti.',
       'payment_request_rejected' =>
-        'Midtrans menolak data transaksi${providerStatus is int ? ' (HTTP $providerStatus)' : ''}. Pastikan nomor ponsel dan data profil valid, lalu coba lagi.',
+        'Data pembayaran tidak dapat diproses. Pastikan nomor ponsel dan data profil sudah benar.',
       'payment_rate_limited' =>
-        'Midtrans membatasi permintaan. Tunggu sebentar sebelum mencoba lagi.',
+        'Terlalu banyak percobaan pembayaran. Tunggu sebentar sebelum mencoba lagi.',
       'payment_invalid_response' =>
-        'Respons transaksi dari Midtrans tidak sesuai. Periksa konfigurasi backend.',
+        'Pembayaran belum dapat diproses. Silakan coba lagi nanti.',
       'payment_tls_error' =>
-        'Backend gagal membuat koneksi HTTPS aman ke Midtrans (TLS). Coba jaringan lain atau periksa VPN, proxy, firewall, dan pemeriksaan SSL pada komputer yang menjalankan Laravel.',
+        'Pembayaran belum dapat dihubungi dengan aman. Periksa koneksi internet lalu coba lagi.',
       'payment_unavailable' =>
-        'Midtrans sedang tidak dapat dihubungi. Coba lagi beberapa saat.',
-      _ when statusCode == 401 => 'Sesi login berakhir. Silakan masuk kembali.',
+        'Layanan pembayaran sedang tidak tersedia. Silakan coba lagi beberapa saat.',
+      _ when statusCode == 401 => 'Sesi masuk sudah berakhir. Silakan masuk kembali.',
       _ when statusCode != null && statusCode >= 500 =>
-        'Server sedang bermasalah (HTTP $statusCode). Coba lagi nanti.',
+        'Pembayaran sedang mengalami gangguan. Silakan coba lagi nanti.',
       _ when error.response == null =>
-        'Tidak dapat terhubung ke server. Periksa jaringan dan backend.',
-      _ => 'Checkout gagal (HTTP $statusCode). Periksa data lalu coba lagi.',
+        'Tidak dapat terhubung. Periksa koneksi internet lalu coba lagi.',
+      _ => 'Pembayaran belum dapat diproses. Periksa data lalu coba lagi.',
     };
   }
 }

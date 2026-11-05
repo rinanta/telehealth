@@ -64,9 +64,8 @@ class AiChatRepository {
 
         return _createMessage(
           serverMessage ??
-              'Maaf Bunda, tidak dapat terhubung ke server AI TeleBunda (${e.message ?? 'Koneksi gagal'}). '
-              'Pastikan server backend Laravel berjalan di ${ApiEndpoints.baseUrl} dan perangkat terhubung ke jaringan yang sama. '
-              'Bunda juga dapat menjadwalkan konsultasi langsung dengan Bidan.',
+              'Maaf Bunda, layanan AI sedang sulit dihubungi. Periksa koneksi internet lalu coba lagi, atau Bunda dapat menjadwalkan konsultasi dengan Bidan.',
+
         );
       } catch (e) {
         debugPrint('TeleBunda AI Error: $e');
@@ -150,13 +149,106 @@ class AiChatRepository {
 
 class AiChatNotifier extends StateNotifier<List<ChatMessage>> {
   final AiChatRepository _repo;
+  final String accountId;
   final _uuid = const Uuid();
   bool _isLoading = false;
+  int _requestGeneration = 0;
 
   bool get isLoading => _isLoading;
 
-  AiChatNotifier(this._repo)
-      : super([
+  AiChatNotifier(this._repo, this.accountId) : super([
+           ChatMessage(
+             id: 'welcome_ai',
+             senderId: 'gemini_ai',
+             senderName: 'TeleBunda AI',
+             text:
+                 'Halo Bunda! Saya asisten edukasi kehamilan TeleBunda AI. 🌸\n\n'
+                 'Bunda bisa bertanya seputar perkembangan janin, tips nutrisi, cara mengatasi ketidaknyamanan kehamilan, atau persiapan persalinan.\n\n'
+                 '*(Informasi ini bersifat edukatif dan bukan diagnosis medis)*',
+             sentAt: DateTime.now(),
+             isAi: true,
+           ),
+         ]);
+
+  Future<void> sendMessage(String text) async {
+    final generation = ++_requestGeneration;
+    final requestAccountId = accountId;
+    final userMsg = ChatMessage(
+      id: 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      senderId: requestAccountId,
+      senderName: 'Bunda',
+      text: text,
+      sentAt: DateTime.now(),
+      isAi: false,
+    );
+
+    final history = state
+        .where((m) => m.id != 'welcome_ai')
+        .map((m) => {
+              'role': m.isAi ? 'model' : 'user',
+              'text': m.text,
+            })
+        .toList();
+
+    state = [...state, userMsg];
+    _isLoading = true;
+
+    try {
+      final aiReply = await _repo.askGemini(text, history: history);
+      if (generation != _requestGeneration || requestAccountId != accountId) {
+        return;
+      }
+      state = [...state, aiReply];
+    } catch (_) {
+      if (generation != _requestGeneration || requestAccountId != accountId) {
+        return;
+      }
+      state = [
+        ...state,
+        ChatMessage(
+          id: 'ai_error_${_uuid.v4()}',
+          senderId: 'gemini_ai',
+          senderName: 'TeleBunda AI',
+          text:
+              'Asisten AI sementara tidak dapat menjawab. Bunda dapat mencoba lagi atau menjadwalkan konsultasi dengan Bidan.',
+          sentAt: DateTime.now(),
+          isAi: true,
+        ),
+      ];
+    } finally {
+      if (generation == _requestGeneration) {
+        _isLoading = false;
+      }
+    }
+  }
+
+  void reset() {
+    _requestGeneration++;
+    _isLoading = false;
+    state = [
+      ChatMessage(
+        id: 'welcome_ai',
+        senderId: 'gemini_ai',
+        senderName: 'TeleBunda AI',
+        text:
+            'Halo Bunda! Ada yang bisa saya bantu terkait kehamilan Bunda hari ini?',
+        sentAt: DateTime.now(),
+        isAi: true,
+      ),
+    ];
+  }
+}
+
+final aiChatRepositoryProvider = Provider<AiChatRepository>((ref) {
+  return AiChatRepository(ref.watch(apiClientProvider));
+});
+
+final aiChatMessagesProvider = StateNotifierProvider.autoDispose.family<AiChatNotifier, List<ChatMessage>, String>((ref, accountId) {
+  final repo = ref.watch(aiChatRepositoryProvider);
+  return AiChatNotifier(repo, accountId);
+});
+
+/* removed legacy duplicate
           ChatMessage(
             id: 'welcome_ai',
             senderId: 'gemini_ai',
@@ -231,8 +323,9 @@ final aiChatRepositoryProvider = Provider<AiChatRepository>((ref) {
   return AiChatRepository(ref.watch(apiClientProvider));
 });
 
-final aiChatMessagesProvider =
+final aiChatMessagesProviderLegacy =
     StateNotifierProvider<AiChatNotifier, List<ChatMessage>>((ref) {
   final repo = ref.watch(aiChatRepositoryProvider);
-  return AiChatNotifier(repo);
+  return AiChatNotifier(repo, 'legacy');
 });
+*/

@@ -111,6 +111,36 @@ class MidwifeBookingEndpointTest extends TestCase
             ->assertJsonPath('data.refund_required', true);
     }
 
+    public function test_verified_midwife_cannot_start_a_booking_after_the_no_show_deadline(): void
+    {
+        $firebase = $this->authenticateVerifiedMidwife();
+        $firebase->shouldReceive('startConsultationForMidwife')
+            ->once()
+            ->with('booking-123', 'midwife-123')
+            ->andReturn('no_show');
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $this->withToken('valid-token')
+            ->postJson('/api/bookings/booking-123/start')
+            ->assertConflict()
+            ->assertJsonPath('code', 'booking_no_show');
+    }
+
+    public function test_midwife_cannot_accept_a_paid_booking_after_the_no_show_deadline(): void
+    {
+        $firebase = $this->authenticateVerifiedMidwife();
+        $firebase->shouldReceive('acceptBookingForMidwife')
+            ->once()
+            ->with('booking-123', 'midwife-123')
+            ->andReturn('no_show');
+        $this->app->instance(FirebaseService::class, $firebase);
+
+        $this->withToken('valid-token')
+            ->postJson('/api/bookings/booking-123/accept')
+            ->assertConflict()
+            ->assertJsonPath('code', 'booking_no_show');
+    }
+
     public function test_verified_midwife_can_start_a_confirmed_booking(): void
     {
         $firebase = $this->authenticateVerifiedMidwife();

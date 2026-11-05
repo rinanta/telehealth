@@ -29,6 +29,7 @@ void main() {
       expect(booking.statusLabel, 'Tidak Hadir');
       expect(booking.endsAt, DateTime.parse('2026-11-05T10:30:00Z'));
       expect(booking.toJson()['ends_at'], '2026-11-05T10:30:00.000Z');
+      expect(booking.isChatActive, isFalse);
     });
 
     testWidgets('StatusBadge renders Tidak Hadir for no_show status', (tester) async {

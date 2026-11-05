@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/emergency_disclaimer_card.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/repositories/ai_chat_repository.dart';
+import '../../../data/repositories/auth_repository.dart';
 
 class AiChatScreen extends ConsumerStatefulWidget {
   const AiChatScreen({super.key});
@@ -43,22 +44,26 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
     });
   }
 
+  String get _accountId => ref.read(authStateProvider)?.uid ?? 'anonymous';
+
   Future<void> _handleSend([String? presetText]) async {
     final text = presetText ?? _textController.text.trim();
-    if (text.isEmpty) return;
+    final notifier = ref.read(aiChatMessagesProvider(_accountId).notifier);
+    if (text.isEmpty || notifier.isLoading) return;
 
     if (presetText == null) {
       _textController.clear();
     }
 
-    await ref.read(aiChatMessagesProvider.notifier).sendMessage(text);
+    await notifier.sendMessage(text);
     _scrollToBottom();
   }
 
   @override
   Widget build(BuildContext context) {
-    final messages = ref.watch(aiChatMessagesProvider);
-    final isLoading = ref.watch(aiChatMessagesProvider.notifier).isLoading;
+    final provider = aiChatMessagesProvider(_accountId);
+    final messages = ref.watch(provider);
+    final isLoading = ref.watch(provider.notifier).isLoading;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -75,7 +80,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
             tooltip: 'Hapus Riwayat Chat AI',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () {
-              ref.read(aiChatMessagesProvider.notifier).reset();
+              ref.read(aiChatMessagesProvider(_accountId).notifier).reset();
             },
           ),
         ],
@@ -138,7 +143,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   label: Text(prompt, style: const TextStyle(fontSize: 12)),
                   backgroundColor: Colors.white,
                   side: const BorderSide(color: AppColors.border),
-                  onPressed: () => _handleSend(prompt),
+                  onPressed: isLoading ? null : () => _handleSend(prompt),
                 );
               },
             ),
@@ -183,6 +188,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                   Expanded(
                     child: TextField(
                       controller: _textController,
+                      enabled: !isLoading,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _handleSend(),
                       decoration: InputDecoration(
@@ -205,7 +211,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                     ),
                     child: IconButton(
                       icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                      onPressed: () => _handleSend(),
+                      onPressed: isLoading ? null : () => _handleSend(),
                     ),
                   ),
                 ],

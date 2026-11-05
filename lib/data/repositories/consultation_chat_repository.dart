@@ -50,9 +50,6 @@ final consultationChatRepositoryProvider = Provider<ConsultationChatRepository>(
   (ref) => ConsultationChatRepository(ref.watch(apiClientProvider)),
 );
 
-final consultationSessionProvider =
-    FutureProvider.family<ConsultationSession, String>((ref, bookingId) {
-      return ref
-          .watch(consultationChatRepositoryProvider)
-          .getSession(bookingId);
-    });
+final consultationSessionProvider = FutureProvider.autoDispose.family<ConsultationSession, String>(
+  (ref, bookingId) => ref.watch(consultationChatRepositoryProvider).getSession(bookingId),
+);

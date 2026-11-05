@@ -48,7 +48,7 @@ class Booking {
   bool get isChatActive {
     if (!isActive) return false;
     final expiresAt = endsAt ?? consultationStartedAt?.add(const Duration(minutes: 30));
-    return expiresAt == null || expiresAt.isAfter(DateTime.now());
+    return expiresAt?.isAfter(DateTime.now()) ?? false;
   }
 
   bool get isAwaitingResult => isActive && !isChatActive;

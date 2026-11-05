@@ -40,14 +40,6 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
     final advice = _adviceController.text.trim();
     final followUp = _followUpController.text.trim();
 
-    if (summary.length < 10 || advice.length < 10 || followUp.length < 5) {
-      setState(
-        () => _errorMessage =
-            'Ringkasan dan saran minimal 10 karakter, tindak lanjut minimal 5 karakter.',
-      );
-      return;
-    }
-
     setState(() {
       _isSaving = true;
       _errorMessage = null;
@@ -107,11 +99,13 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
 
   @override
   Widget build(BuildContext context) {
-    final bookings = ref.watch(midwifeBookingsProvider).value ?? const <Booking>[];
+    final bookingsAsync = ref.watch(midwifeBookingsProvider);
+    final bookings = bookingsAsync.value ?? const <Booking>[];
     final booking = bookings.cast<Booking?>().firstWhere(
           (b) => b?.id == widget.bookingId,
           orElse: () => null,
         );
+    final canComplete = booking?.isActive == true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -199,13 +193,31 @@ class _MidwifeResultFormScreenState extends ConsumerState<MidwifeResultFormScree
 
             const SizedBox(height: 26),
 
-            AppButton(
-              label: 'Simpan Lembar Hasil & Selesaikan Sesi',
-              icon: Icons.check_circle_rounded,
-              backgroundColor: AppColors.secondary,
-              isLoading: _isSaving,
-              onPressed: _handleSave,
-            ),
+            if (booking == null && bookingsAsync.isLoading)
+              const Center(child: CircularProgressIndicator())
+            else if (canComplete)
+              AppButton(
+                label: 'Simpan Lembar Hasil & Selesaikan Sesi',
+                icon: Icons.check_circle_rounded,
+                backgroundColor: AppColors.secondary,
+                isLoading: _isSaving,
+                onPressed: _handleSave,
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.warningContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  booking == null
+                      ? 'Booking tidak ditemukan atau bukan milik akun bidan ini.'
+                      : 'Hasil hanya dapat disimpan setelah sesi konsultasi dimulai.',
+                  style: const TextStyle(color: AppColors.textPrimary),
+                ),
+              ),
             const SizedBox(height: 20),
           ],
         ),

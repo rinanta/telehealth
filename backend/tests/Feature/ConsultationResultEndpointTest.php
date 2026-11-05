@@ -43,20 +43,37 @@ class ConsultationResultEndpointTest extends TestCase
             ->assertJsonPath('data.consultation_completed_at', '2026-11-04T05:00:00+00:00');
     }
 
-    public function test_completing_a_consultation_requires_summary_advice_and_follow_up(): void
+    public function test_midwife_can_save_a_result_with_free_form_optional_sections(): void
     {
         $firebase = $this->authenticate('midwife-123', [
             'role' => 'midwife',
             'verified' => true,
             'name' => 'Bidan Terverifikasi',
         ]);
-        $firebase->shouldNotReceive('completeConsultationForMidwife');
+        $firebase->shouldReceive('completeConsultationForMidwife')
+            ->once()
+            ->with(
+                'booking-123',
+                'midwife-123',
+                'Bidan Terverifikasi',
+                [
+                    'summary' => 'pendek',
+                    'advice' => '',
+                    'supplement_note' => null,
+                    'follow_up' => '',
+                ],
+            )
+            ->andReturn([
+                'result' => 'completed',
+                'consultation_completed_at' => '2026-11-04T05:00:00+00:00',
+                'consultation_result' => ['id' => 'booking-123'],
+            ]);
         $this->app->instance(FirebaseService::class, $firebase);
 
         $this->withToken('valid-token')
             ->postJson('/api/bookings/booking-123/complete', ['summary' => 'pendek'])
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors(['summary', 'advice', 'follow_up']);
+            ->assertOk()
+            ->assertJsonPath('data.status', 'completed');
     }
 
     public function test_midwife_cannot_complete_a_consultation_that_is_not_active(): void

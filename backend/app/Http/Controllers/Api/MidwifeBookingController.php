@@ -101,6 +101,13 @@ class MidwifeBookingController extends Controller
             ], 404);
         }
 
+        if ($result === 'no_show') {
+            return response()->json([
+                'message' => 'This booking is past the 10-minute start window and was marked as no-show.',
+                'code' => 'booking_no_show',
+            ], 409);
+        }
+
         if ($result !== 'accepted') {
             return response()->json([
                 'message' => 'This booking is no longer waiting for confirmation.',
@@ -170,6 +177,20 @@ class MidwifeBookingController extends Controller
             ], 409);
         }
 
+        if ($result === 'no_show') {
+            return response()->json([
+                'message' => 'This booking is past the 10-minute start window and cannot be started.',
+                'code' => 'booking_no_show',
+            ], 409);
+        }
+
+        if ($result === 'invalid_schedule') {
+            return response()->json([
+                'message' => 'The booking has an invalid scheduled time.',
+                'code' => 'invalid_booking_schedule',
+            ], 409);
+        }
+
         if ($result !== 'started') {
             return response()->json([
                 'message' => 'This booking is not ready to start.',
@@ -195,11 +216,17 @@ class MidwifeBookingController extends Controller
         FirebaseService $firebase,
     ): JsonResponse {
         $data = $request->validate([
-            'summary' => ['required', 'string', 'min:10', 'max:2000'],
-            'advice' => ['required', 'string', 'min:10', 'max:2000'],
-            'supplement_note' => ['nullable', 'string', 'max:1000'],
-            'follow_up' => ['required', 'string', 'min:5', 'max:1000'],
+            'summary' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'advice' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'supplement_note' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'follow_up' => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
+
+        foreach (['summary', 'advice', 'follow_up'] as $field) {
+            if (! array_key_exists($field, $data)) {
+                $data[$field] = null;
+            }
+        }
         $midwifeProfile = $request->attributes->get('firebase_profile');
         $midwifeName = is_string($midwifeProfile['name'] ?? null)
             ? $midwifeProfile['name']
@@ -213,12 +240,19 @@ class MidwifeBookingController extends Controller
             $request->attributes->get('firebase_uid'),
             $midwifeName,
             [
-                'summary' => trim($data['summary']),
-                'advice' => trim($data['advice']),
+                'summary' => trim($data['summary'] ?? ''),
+                'advice' => trim($data['advice'] ?? ''),
                 'supplement_note' => $supplementNote === '' ? null : $supplementNote,
-                'follow_up' => trim($data['follow_up']),
+                'follow_up' => trim($data['follow_up'] ?? ''),
             ],
         );
+
+        if (! is_string($outcome['result'] ?? null)) {
+            return response()->json([
+                'message' => 'Invalid consultation result request.',
+                'code' => 'invalid_result_request',
+            ], 422);
+        }
 
         if (in_array($outcome['result'], ['not_found', 'not_owned'], true)) {
             return response()->json([

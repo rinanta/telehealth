@@ -143,7 +143,7 @@ class BookingStatusScreen extends ConsumerWidget {
                     title: '2. Pembayaran Midtrans Sandbox',
                     subtitle: booking.isAwaitingPayment
                         ? 'Menunggu pembayaran di sandbox gateway'
-                        : 'Pembayaran terverifikasi server',
+                        : 'Pembayaran berhasil dikonfirmasi',
                     isDone: !booking.isAwaitingPayment,
                     isActive: booking.isAwaitingPayment,
                   ),
@@ -364,7 +364,7 @@ class _ServerBookingStatusLoader extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Status booking tidak dapat dimuat dari server.'),
+              const Text('Status booking belum dapat dimuat. Periksa koneksi lalu coba lagi.'),
               TextButton(
                 onPressed: () =>
                     ref.invalidate(serverBookingProvider(bookingId)),
@@ -509,7 +509,7 @@ class _ServerBookingHoldStatusState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Status booking dari server',
+                  'Status booking',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
@@ -519,7 +519,7 @@ class _ServerBookingHoldStatusState
                 StatusBadge(status: booking.status),
                 const SizedBox(height: 16),
                 _BookingDetailRow(
-                  label: 'Tarif dari server',
+                  label: 'Tarif konsultasi',
                   value: Formatters.toRupiah(booking.amount),
                   valueKey: const Key('server-booking-amount'),
                 ),

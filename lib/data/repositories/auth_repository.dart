@@ -229,8 +229,11 @@ class AuthNotifier extends StateNotifier<AppUser?> {
   }
 
   Future<void> logout() async {
-    await _repo.logout();
-    state = null;
+    try {
+      await _repo.logout();
+    } finally {
+      state = null;
+    }
   }
 }
 

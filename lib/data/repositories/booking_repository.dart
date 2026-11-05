@@ -337,11 +337,11 @@ final bookingRepositoryProvider = Provider<BookingRepository>(
   (ref) => BookingRepository(apiClient: ref.watch(apiClientProvider)),
 );
 
-final serverBookingProvider = FutureProvider.family<BookingHold, String>(
+final serverBookingProvider = FutureProvider.autoDispose.family<BookingHold, String>(
   (ref, bookingId) => ref.watch(bookingRepositoryProvider).fetchBookingById(bookingId),
 );
 
-final midwifeBookingsProvider = FutureProvider<List<Booking>>(
+final midwifeBookingsProvider = FutureProvider.autoDispose<List<Booking>>(
   (ref) => ref.watch(bookingRepositoryProvider).getMidwifeBookings(),
 );
 

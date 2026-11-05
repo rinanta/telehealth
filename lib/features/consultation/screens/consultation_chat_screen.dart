@@ -100,8 +100,8 @@ class _ConsultationChatScreenState
     final session = ref.watch(consultationSessionProvider(widget.bookingId));
     return session.when(
       loading: () => Scaffold(
-        appBar: AppBar(title: Text('Ruang Konsultasi')),
-        body: Center(child: CircularProgressIndicator()),
+        appBar: AppBar(title: const Text('Ruang Konsultasi')),
+        body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, stackTrace) => Scaffold(
         appBar: AppBar(title: const Text('Ruang Konsultasi')),
@@ -136,6 +136,10 @@ class _ConsultationChatScreenState
     final isMidwife = user?.isMidwife ?? false;
     final booking = session.booking;
     final messages = session.messages;
+    final participantName = (isMidwife ? booking.patientName : booking.midwifeName).trim();
+    final roomParticipantName = participantName.isEmpty
+        ? (isMidwife ? 'Pasien konsultasi' : 'Bidan konsultasi')
+        : participantName;
 
     final startedAt = booking.consultationStartedAt ?? DateTime.now();
     final isReadOnly =
@@ -144,12 +148,24 @@ class _ConsultationChatScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Kembali',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            final navigator = Navigator.of(context);
+            if (navigator.canPop()) {
+              navigator.pop();
+            } else {
+              context.go(isMidwife ? '/midwife-dashboard' : '/patient-dashboard');
+            }
+          },
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              isMidwife ? booking.patientName : booking.midwifeName,
+              roomParticipantName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
@@ -320,7 +336,35 @@ class _ConsultationChatScreenState
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: SafeArea(
-              child: isReadOnly
+              child: _isSending
+                  ? Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Mengirim pesan ke server...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : isReadOnly
                   ? Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 12),

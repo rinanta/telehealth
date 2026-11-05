@@ -312,7 +312,7 @@ class _BookingFormScreenState extends ConsumerState<BookingFormScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Slot ditahan selama 15 menit. Tarif final dan status booking ditentukan oleh server.',
+              'Slot ditahan selama 15 menit. Tarif final dan status booking mengikuti ketentuan aplikasi.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             if (_submissionError != null) ...[

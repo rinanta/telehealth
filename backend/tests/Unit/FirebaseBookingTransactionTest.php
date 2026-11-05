@@ -330,6 +330,7 @@ class FirebaseBookingTransactionTest extends TestCase
                 'bookings/booking-123',
                 [
                     'midwife_id' => ['stringValue' => 'midwife-123'],
+                    'slot_start_at' => ['timestampValue' => now('UTC')->toIso8601String()],
                     'status' => ['stringValue' => 'paid_pending_midwife'],
                 ],
             )),

@@ -18,6 +18,13 @@ class MidwifeController extends Controller
         foreach ($documents as $document) {
             if (! $this->isEligibleMidwife($document)) {
                 $invalidCount++;
+                Log::warning('Midwife omitted from catalog because its document is incomplete or inactive.', [
+                    'midwife_id' => $document['id'] ?? null,
+                    'active' => $document['active'] ?? null,
+                    'verification_status' => $document['verification_status'] ?? null,
+                    'has_display_name' => is_string($document['display_name'] ?? null),
+                    'has_credential_label' => is_string($document['credential_label'] ?? null),
+                ]);
 
                 continue;
             }
