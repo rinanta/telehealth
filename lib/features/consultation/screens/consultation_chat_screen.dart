@@ -81,14 +81,14 @@ class _ConsultationChatScreenState
           content: Text(
             code == 'consultation_expired'
                 ? 'Waktu konsultasi 30 menit telah berakhir.'
-                : 'Pesan gagal dikirim ke server. Periksa koneksi lalu coba lagi.',
+                : 'Pesan gagal dikirim. Periksa koneksi lalu coba lagi.',
           ),
         ),
       );
     } on FormatException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Respons chat dari server tidak valid.')),
+        const SnackBar(content: Text('Pesan belum dapat dimuat. Coba lagi.')),
       );
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -354,7 +354,7 @@ class _ConsultationChatScreenState
                           ),
                           SizedBox(width: 10),
                           Text(
-                            'Mengirim pesan ke server...',
+                            'Pesan sedang dikirim...',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -375,7 +375,7 @@ class _ConsultationChatScreenState
                       alignment: Alignment.center,
                       child: Text(
                         _isTimerExpired || !session.canSend
-                            ? 'Waktu 30 menit telah berakhir. Input pesan dikunci oleh server.'
+                            ? 'Waktu konsultasi 30 menit telah berakhir. Pesan baru tidak dapat dikirim.'
                             : 'Konsultasi telah ditutup oleh Bidan.',
                         style: const TextStyle(
                           fontSize: 12,

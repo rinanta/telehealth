@@ -444,7 +444,7 @@ class _ServerBookingHoldStatusState
     } on FormatException {
       if (!mounted) return;
       setState(() {
-        _refreshError = 'Respons status booking dari server tidak valid.';
+        _refreshError = 'Status booking belum dapat dimuat. Coba lagi.';
       });
     } finally {
       _isRefreshing = false;
@@ -564,7 +564,7 @@ class _ServerBookingHoldStatusState
                   Text(
                     _secondsRemaining > 0
                         ? 'Slot ditahan sampai ${Formatters.formatTime(booking.holdExpiresAt)}.'
-                        : 'Waktu hold tercapai. Memeriksa status terbaru dari server.',
+                        : 'Waktu tunggu pembayaran tercapai. Memeriksa status terbaru.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 12,
@@ -620,13 +620,13 @@ class _ServerBookingHoldStatusState
   String _bookingStatusMessage(String status) {
     return switch (status) {
       'awaiting_payment' =>
-        'Booking menunggu pembayaran. Ketuk Lanjutkan Pembayaran untuk membuka halaman Midtrans; status berubah setelah server memverifikasi pembayaran.',
+        'Booking menunggu pembayaran. Ketuk Lanjutkan Pembayaran untuk membuka halaman Midtrans; status akan berubah otomatis setelah pembayaran berhasil dikonfirmasi.',
       'paid_pending_midwife' =>
         'Pembayaran telah diverifikasi. Menunggu konfirmasi bidan.',
       'confirmed' => 'Booking dikonfirmasi. Jadwal konsultasi Anda tercatat.',
       'active' => 'Sesi konsultasi sedang berlangsung.',
       'completed' => 'Sesi konsultasi telah selesai.',
-      'expired' => 'Waktu hold habis dan slot telah dilepas oleh server.',
+      'expired' => 'Waktu tunggu habis dan slot sudah dilepas. Silakan buat booking baru.',
       'payment_failed' => 'Pembayaran gagal. Silakan buat booking baru.',
       'cancelled' => 'Booking dibatalkan.',
       'rejected' => 'Booking ditolak oleh bidan.',

@@ -305,7 +305,7 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
     } on FormatException {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Respons checkout dari server tidak valid.';
+          _errorMessage = 'Checkout belum dapat diproses. Silakan coba lagi.';
         });
       }
     } finally {
@@ -320,7 +320,7 @@ class _PaymentCheckoutScreenState extends ConsumerState<PaymentCheckoutScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Data booking tidak dapat dimuat dari server.'),
+            const Text('Data booking belum dapat dimuat. Coba lagi.'),
             const SizedBox(height: 12),
             AppButton(
               label: 'Coba lagi',

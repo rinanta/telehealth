@@ -384,7 +384,7 @@ class _BookingFormScreenState extends ConsumerState<BookingFormScreen> {
       if (!mounted) return;
       setState(() {
         _submissionError =
-            'Respons booking dari server tidak valid. Silakan coba lagi.';
+            'Booking belum dapat diproses. Silakan coba lagi.';
       });
     } finally {
       if (mounted) {

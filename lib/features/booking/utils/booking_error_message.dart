@@ -14,7 +14,7 @@ String bookingSubmissionErrorMessage(DioException error) {
   }
 
   if (statusCode != null && statusCode >= 500) {
-    return 'Server sedang bermasalah (HTTP $statusCode). Coba lagi beberapa saat.';
+    return 'Layanan sedang bermasalah. Coba lagi beberapa saat.';
   }
 
   if (statusCode == 403) {
@@ -22,7 +22,7 @@ String bookingSubmissionErrorMessage(DioException error) {
   }
 
   if (statusCode == 422) {
-    return 'Data booking ditolak server. Periksa keluhan dan slot, lalu coba lagi.';
+    return 'Data booking tidak dapat diproses. Periksa keluhan dan slot, lalu coba lagi.';
   }
 
   if (statusCode == 429) {
@@ -34,11 +34,11 @@ String bookingSubmissionErrorMessage(DioException error) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
       DioExceptionType.receiveTimeout =>
-        'Koneksi ke server timeout. Periksa jaringan dan pastikan backend berjalan.',
+        'Koneksi terlalu lama. Periksa jaringan lalu coba lagi.',
       _ =>
-        'Tidak dapat terhubung ke server. Periksa jaringan dan alamat backend.',
+        'Tidak dapat terhubung. Periksa jaringan lalu coba lagi.',
     };
   }
 
-  return 'Server menolak booking (HTTP $statusCode). Periksa data lalu coba lagi.';
+  return 'Booking tidak dapat diproses. Periksa data lalu coba lagi.';
 }

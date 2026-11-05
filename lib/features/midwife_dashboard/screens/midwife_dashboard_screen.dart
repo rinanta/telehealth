@@ -31,7 +31,7 @@ class MidwifeDashboardScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Booking bidan gagal dimuat dari server.'),
+                const Text('Booking bidan belum dapat dimuat. Coba lagi.'),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => ref.invalidate(midwifeBookingsProvider),

@@ -55,7 +55,7 @@ void main() {
 
       expect(
         bookingSubmissionErrorMessage(error),
-        contains('Server sedang bermasalah (HTTP 500)'),
+        contains('Layanan sedang bermasalah'),
       );
     });
   });
