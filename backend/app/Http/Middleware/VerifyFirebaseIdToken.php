@@ -33,7 +33,9 @@ class VerifyFirebaseIdToken
 
         try {
             $claims = $firebase->verifyIdToken($token);
-        } catch (IdTokenVerificationFailed) {
+        } catch (IdTokenVerificationFailed $error) {
+            report($error);
+
             return response()->json([
                 'message' => 'Firebase ID token is invalid or expired.',
                 'code' => 'unauthenticated',

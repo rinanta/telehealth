@@ -8,6 +8,7 @@ use Google\Auth\Credentials\ServiceAccountCredentials;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Kreait\Firebase\JWT\Error\IdTokenVerificationFailed;
 use Kreait\Firebase\JWT\IdTokenVerifier;
 use RuntimeException;
 
@@ -28,7 +29,25 @@ class FirebaseService
      */
     public function verifyIdToken(string $token): array
     {
-        return $this->idTokenVerifier()->verifyIdToken($token)->payload();
+        try {
+            return $this->idTokenVerifier()->verifyIdTokenWithLeeway(
+                $token,
+                max(0, (int) config('firebase.token_clock_skew_seconds', 30)),
+            )->payload();
+        } catch (IdTokenVerificationFailed $error) {
+            $projectId = $this->projectId();
+            if ($projectId === null) {
+                throw $error;
+            }
+
+            // Refresh the in-process verifier once so rotated Google keys are re-fetched.
+            unset(self::$idTokenVerifiers[$projectId]);
+
+            return $this->idTokenVerifier()->verifyIdTokenWithLeeway(
+                $token,
+                max(0, (int) config('firebase.token_clock_skew_seconds', 30)),
+            )->payload();
+        }
     }
 
     /**

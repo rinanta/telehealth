@@ -13,23 +13,39 @@ class AuthRepository {
   final FirebaseAuth? _firebaseAuth;
   final ApiClient _apiClient;
   AppUser? _currentUser;
+  String? _idToken;
+  int _sessionGeneration = 0;
   FirebaseAuth get _auth => _firebaseAuth ?? FirebaseAuth.instance;
 
   AuthRepository({FirebaseAuth? firebaseAuth, required ApiClient apiClient})
     : _firebaseAuth = firebaseAuth,
       _apiClient = apiClient {
     _apiClient.setTokenProvider(() async {
-      return _auth.currentUser?.getIdToken();
+      return _idToken ?? _auth.currentUser?.getIdToken();
     });
   }
 
   AppUser? get currentUser => _currentUser;
 
   Future<AppUser> login(String email, String password) async {
+    final generation = ++_sessionGeneration;
     _apiClient.setAuthToken(null);
-    await _auth.signInWithEmailAndPassword(email: email, password: password);
-    _currentUser = await _fetchProfile();
-    return _currentUser!;
+    _idToken = null;
+
+    try {
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      final user = await _fetchProfile();
+      if (generation != _sessionGeneration) {
+        throw StateError('The authentication session changed during login.');
+      }
+      _currentUser = user;
+      return user;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) {
+        await _clearSession();
+      }
+      rethrow;
+    }
   }
 
   Future<AppUser> registerPatient({
@@ -37,7 +53,11 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    final generation = ++_sessionGeneration;
     await _createFirebaseAccount(email, password);
+    if (generation != _sessionGeneration) {
+      throw StateError('The authentication session changed during registration.');
+    }
     _currentUser = await _registerProfile({'name': name, 'role': 'patient'});
     return _currentUser!;
   }
@@ -49,7 +69,11 @@ class AuthRepository {
     required String credentialLabel,
     required String strNumber,
   }) async {
+    final generation = ++_sessionGeneration;
     await _createFirebaseAccount(email, password);
+    if (generation != _sessionGeneration) {
+      throw StateError('The authentication session changed during registration.');
+    }
     _currentUser = await _registerProfile({
       'name': name,
       'role': 'midwife',
@@ -60,15 +84,24 @@ class AuthRepository {
   }
 
   Future<AppUser?> restoreSession() async {
+    final generation = _sessionGeneration;
     if (Firebase.apps.isEmpty || _auth.currentUser == null) return null;
-    _currentUser = await _fetchProfile();
-    return _currentUser;
+    final user = await _fetchProfile();
+    if (generation != _sessionGeneration) return null;
+    _currentUser = user;
+    return user;
   }
 
   Future<void> logout() async {
-    if (Firebase.apps.isNotEmpty) {
+    _sessionGeneration++;
+    await _clearSession();
+  }
+
+  Future<void> _clearSession() async {
+    if (Firebase.apps.isNotEmpty && _auth.currentUser != null) {
       await _auth.signOut();
     }
+    _idToken = null;
     _apiClient.setAuthToken(null);
     _currentUser = null;
   }
@@ -88,6 +121,17 @@ class AuthRepository {
   }
 
   Future<AppUser> _registerProfile(Map<String, dynamic> profile) async {
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) {
+      throw StateError('No Firebase user is signed in.');
+    }
+
+    _idToken = await firebaseUser.getIdToken(true);
+    if (_idToken == null || _idToken!.isEmpty) {
+      throw StateError('Firebase did not return an ID token.');
+    }
+    _apiClient.setAuthToken(_idToken);
+
     final response = await _apiClient.post(
       ApiEndpoints.register,
       data: profile,
@@ -96,8 +140,30 @@ class AuthRepository {
   }
 
   Future<AppUser> _fetchProfile() async {
-    final response = await _apiClient.get(ApiEndpoints.me);
-    return _parseProfile(response.data);
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser == null) {
+      throw StateError('No Firebase user is signed in.');
+    }
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      _idToken = await firebaseUser.getIdToken(true);
+      if (_idToken == null || _idToken!.isEmpty) {
+        throw StateError('Firebase did not return an ID token.');
+      }
+      _apiClient.setAuthToken(_idToken);
+
+      try {
+        final response = await _apiClient.get(ApiEndpoints.me);
+        return _parseProfile(response.data);
+      } on DioException catch (error) {
+        if (attempt == 0 && error.response?.statusCode == 401) {
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    throw StateError('Unable to verify the Firebase session.');
   }
 
   AppUser _parseProfile(dynamic response) {
